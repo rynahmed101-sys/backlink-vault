@@ -1,0 +1,15 @@
+# Environment & Secret files
+.env
+*.log
+*.tmp
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+
+# Node / OS System files
+node_modules/
+.DS_Store
+Thumbs.db
+
+# Note: vault.db is intentionally preserved for initial deployment seed

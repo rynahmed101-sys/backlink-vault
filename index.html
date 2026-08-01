@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Backlink Vault | Modern Intelligent Link Auditor</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon">V</div>
+        <div class="brand-title">Backlink Vault</div>
+      </div>
+
+      <nav class="nav-menu">
+        <div class="nav-item active" data-tab="vault">
+          <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+          Vault Explorer
+        </div>
+
+        <div class="nav-item" data-tab="upload">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          Submit / Upload
+        </div>
+
+        <!-- Admin Only Tab -->
+        <div class="nav-item admin-only" data-tab="approvals" style="display: none;">
+          <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+          Admin Approvals
+          <span class="badge badge-pending" id="pending-approval-badge" style="margin-left: auto; font-size: 10px;">0</span>
+        </div>
+
+        <!-- Admin Only Tab -->
+        <div class="nav-item admin-only" data-tab="bot" style="display: none;">
+          <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"></rect><circle cx="12" cy="5" r="2"></circle><path d="M12 7v4"></path></svg>
+          Tiny Bot Stream
+        </div>
+
+        <!-- Admin Only Tab -->
+        <div class="nav-item admin-only" data-tab="analytics" style="display: none;">
+          <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+          Analytics & Niche
+        </div>
+      </nav>
+
+      <!-- Sidebar Bot Widget (Admin Only) -->
+      <div class="sidebar-bot-widget admin-only" style="display: none;">
+        <div class="bot-widget-header">
+          <div class="bot-status-indicator">
+            <span class="dot" id="bot-status-dot"></span>
+            <span id="bot-status-text">Bot Active</span>
+          </div>
+          <button class="btn btn-secondary" id="toggle-bot-btn" style="padding: 4px 10px; font-size: 11px;">Pause</button>
+        </div>
+        <div style="font-size: 11px; color: var(--text-dim);" id="bot-queue-summary">Queue: 0 links pending</div>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      
+      <!-- Top Search & User Profile Bar -->
+      <header class="top-header">
+        <div class="header-search-container">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input type="text" id="search-input" placeholder="Search backlinks by URL, title, or target page...">
+        </div>
+
+        <div class="header-actions">
+          <button class="btn btn-secondary admin-only" id="export-csv-btn" style="display: none;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            Export CSV
+          </button>
+          
+          <button class="btn btn-primary" id="open-add-modal-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            Submit Link
+          </button>
+
+          <!-- User Profile Dropdown / Auth Button -->
+          <div id="user-profile-container" style="display: flex; align-items: center; gap: 10px; margin-left: 8px;">
+            <button class="btn btn-secondary" id="open-auth-btn">Log In / Sign Up</button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Page Body -->
+      <div class="page-body">
+
+        <!-- Tab 1: Vault Explorer -->
+        <section id="tab-vault" class="tab-page">
+          
+          <!-- Summary Cards -->
+          <div class="stats-grid">
+            <div class="stat-card">
+              <span class="stat-label">Total Vault Links</span>
+              <span class="stat-value" id="stat-total">0</span>
+              <span class="stat-sub" id="stat-pending-sub">0 Pending Approval</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Active Verified</span>
+              <span class="stat-value" id="stat-active" style="color: var(--accent-emerald);">0</span>
+              <span class="stat-sub">HTTP 200 OK</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Avg. Domain Authority</span>
+              <span class="stat-value" id="stat-avg-da" style="color: var(--accent-cyan);">0</span>
+              <span class="stat-sub">Algorithmic DA 0-100</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-label">Avg. Backlink Value</span>
+              <span class="stat-value" id="stat-avg-val" style="color: var(--accent-purple);">0</span>
+              <span class="stat-sub">Overall Quality Index</span>
+            </div>
+          </div>
+
+          <!-- Filter Pills -->
+          <div class="filter-bar">
+            <div class="filter-pills" id="niche-pills">
+              <div class="pill active" data-filter-type="niche" data-value="All">All Niches</div>
+            </div>
+            <div class="filter-pills">
+              <div class="pill active" data-filter-type="status" data-value="All">All Status</div>
+              <div class="pill" data-filter-type="status" data-value="Active">Active</div>
+              <div class="pill" data-filter-type="status" data-value="Pending Approval">Pending Approval</div>
+              <div class="pill" data-filter-type="rel" data-value="DoFollow">DoFollow Only</div>
+            </div>
+          </div>
+
+          <!-- Vault Table -->
+          <div class="table-card">
+            <table class="vault-table">
+              <thead>
+                <tr>
+                  <th>Target Webpage & Title</th>
+                  <th>Submitted By</th>
+                  <th>Niche</th>
+                  <th>Est. DA</th>
+                  <th>Relation</th>
+                  <th>Approval Status</th>
+                  <th>Value Score</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="vault-table-body">
+                <!-- Rows injected via JS -->
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Tab 2: Upload / Submit Links -->
+        <section id="tab-upload" class="tab-page" style="display: none;">
+          <div style="max-width: 720px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 24px;">
+            <h2 style="font-size: 20px; font-weight: 700;">Submit / Import Backlinks</h2>
+            
+            <div class="upload-card" id="drop-zone">
+              <div class="upload-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              </div>
+              <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 6px;">Drop your Excel or CSV file here</h3>
+              <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">Supports .xlsx, .xls, .csv files</p>
+              <input type="file" id="file-input" accept=".csv, .txt, .xlsx, .xls" style="display: none;">
+              <button class="btn btn-secondary" onclick="document.getElementById('file-input').click()">Browse Files</button>
+            </div>
+
+            <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 24px;">
+              <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">Or Paste Bulk URLs</h3>
+              <textarea id="bulk-urls-input" class="form-control" style="height: 140px; font-family: monospace; resize: vertical;" placeholder="https://example.com/article-1&#10;https://anotherblog.org/resources"></textarea>
+              <div style="margin-top: 14px; display: flex; justify-content: flex-end;">
+                <button class="btn btn-primary" id="submit-bulk-btn">Submit Bulk Links</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 3: Admin Approval Queue (Admin Only) -->
+        <section id="tab-approvals" class="tab-page" style="display: none;">
+          <div style="display: flex; flex-direction: column; gap: 20px;">
+            <div>
+              <h2 style="font-size: 20px; font-weight: 700;">Admin Approval Queue</h2>
+              <p style="font-size: 13px; color: var(--text-muted);">Review user-submitted backlinks. Approved links will automatically enter the Tiny Bot inspection queue.</p>
+            </div>
+
+            <div class="table-card">
+              <table class="vault-table">
+                <thead>
+                  <tr>
+                    <th>Submitted URL</th>
+                    <th>Target Page</th>
+                    <th>Submitted By</th>
+                    <th>Date</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="approvals-table-body">
+                  <!-- Approvals injected via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 4: Tiny Bot Live Log (Admin Only) -->
+        <section id="tab-bot" class="tab-page" style="display: none;">
+          <div style="display: flex; flex-direction: column; gap: 20px;">
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+              <div>
+                <h2 style="font-size: 20px; font-weight: 700;">Tiny Bot Inspector Stream</h2>
+                <p style="font-size: 13px; color: var(--text-muted);">Sequentially auditing approved links with anti-block protection (2.5s delay)</p>
+              </div>
+              <div style="display: flex; gap: 10px;">
+                <button class="btn btn-secondary" id="bot-toggle-main-btn">Pause Bot</button>
+              </div>
+            </div>
+
+            <div class="terminal-window" id="bot-terminal"></div>
+          </div>
+        </section>
+
+        <!-- Tab 5: Analytics (Admin Only) -->
+        <section id="tab-analytics" class="tab-page" style="display: none;">
+          <div style="display: flex; flex-direction: column; gap: 24px;">
+            <h2 style="font-size: 20px; font-weight: 700;">Backlink Analytics & Niche Matrix</h2>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+              <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 20px;">
+                <h3 style="font-size: 14px; font-weight: 600; color: var(--text-muted); margin-bottom: 16px;">Niche Breakdown</h3>
+                <canvas id="nicheChart" height="220"></canvas>
+              </div>
+              <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 20px;">
+                <h3 style="font-size: 14px; font-weight: 600; color: var(--text-muted); margin-bottom: 16px;">DA Distribution</h3>
+                <canvas id="daChart" height="220"></canvas>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+
+  </div>
+
+  <!-- Add / Submit Link Modal -->
+  <div class="modal-overlay" id="add-modal">
+    <div class="modal">
+      <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">Submit Backlink to Vault</h3>
+      
+      <div class="form-group">
+        <label>Website / Article URL *</label>
+        <input type="url" id="modal-url" class="form-control" placeholder="https://techcrunch.com/article-name" required>
+      </div>
+
+      <div class="form-group">
+        <label>Your Target Landing Page (Optional)</label>
+        <input type="url" id="modal-target-url" class="form-control" placeholder="https://yoursite.com/my-page">
+      </div>
+
+      <div class="form-group">
+        <label>Anchor Text (Optional)</label>
+        <input type="text" id="modal-anchor" class="form-control" placeholder="best saas tool">
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
+        <button class="btn btn-secondary" onclick="document.getElementById('add-modal').classList.remove('active')">Cancel</button>
+        <button class="btn btn-primary" id="save-link-btn">Submit Link</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Auth Modal -->
+  <div class="modal-overlay" id="auth-modal">
+    <div class="modal" style="width: 440px;">
+      <div style="display: flex; border-bottom: 1px solid var(--border-color); margin-bottom: 20px;">
+        <div class="auth-tab active" id="tab-btn-login" style="flex: 1; text-align: center; padding: 10px; font-weight: 600; cursor: pointer; border-bottom: 2px solid var(--accent-cyan);">Log In</div>
+        <div class="auth-tab" id="tab-btn-register" style="flex: 1; text-align: center; padding: 10px; font-weight: 600; cursor: pointer; color: var(--text-muted);">Sign Up</div>
+      </div>
+
+      <div style="margin-bottom: 20px;">
+        <div id="google-signin-btn" style="display: flex; justify-content: center;"></div>
+      </div>
+
+      <div style="display: flex; align-items: center; margin: 16px 0; color: var(--text-dim); font-size: 12px;">
+        <hr style="flex: 1; border: none; border-top: 1px solid var(--border-color);">
+        <span style="padding: 0 10px;">or with email</span>
+        <hr style="flex: 1; border: none; border-top: 1px solid var(--border-color);">
+      </div>
+
+      <!-- Login Form -->
+      <form id="login-form">
+        <div class="form-group">
+          <label>Email Address</label>
+          <input type="email" id="login-email" class="form-control" placeholder="admin@vault.com" required>
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="login-password" class="form-control" placeholder="••••••••" required>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 10px;">Log In</button>
+      </form>
+
+      <!-- Register Form -->
+      <form id="register-form" style="display: none;">
+        <div class="form-group">
+          <label>Full Name</label>
+          <input type="text" id="reg-name" class="form-control" placeholder="John Doe">
+        </div>
+        <div class="form-group">
+          <label>Email Address</label>
+          <input type="email" id="reg-email" class="form-control" placeholder="name@domain.com" required>
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" id="reg-password" class="form-control" placeholder="••••••••" required minlength="6">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 10px;">Create Account</button>
+      </form>
+
+      <div style="margin-top: 16px; text-align: center;">
+        <button class="btn btn-secondary" onclick="document.getElementById('auth-modal').classList.remove('active')" style="padding: 6px 16px; font-size: 12px;">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
