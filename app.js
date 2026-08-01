@@ -541,6 +541,8 @@ function initModals() {
   const addModal = document.getElementById('add-modal');
   document.getElementById('open-add-modal-btn').addEventListener('click', () => {
     if (!currentUser) {
+      // Show friendly sign‑up prompt instead of raw auth modal
+      alert('Upload your links (do your own copywriting) by signing up.');
       document.getElementById('auth-modal').classList.add('active');
       return;
     }
@@ -593,8 +595,9 @@ function initFileUpload() {
 
   document.getElementById('submit-bulk-btn').addEventListener('click', async () => {
     if (!currentUser) {
+      // Prompt unauthenticated users to sign up with copywriting message
+      alert('Upload your links (do your own copywriting) by signing up.');
       document.getElementById('auth-modal').classList.add('active');
-      alert('Please log in first to submit links!');
       return;
     }
 
@@ -607,8 +610,9 @@ function initFileUpload() {
 
 function handleFile(file) {
   if (!currentUser) {
+    // Prompt unauthenticated users to sign up before file upload
+    alert('Upload your links (do your own copywriting) by signing up.');
     document.getElementById('auth-modal').classList.add('active');
-    alert('Please log in first to upload link files!');
     return;
   }
 
