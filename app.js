@@ -42,10 +42,8 @@ async function loadAppConfig() {
   try {
     const res  = await fetch('/api/config?t=' + new Date().getTime());
     const cfg  = await res.json();
-    googleClientId = cfg.google_client_id || '';
   } catch (e) {
-    console.warn('Config load failed, Google Sign-In may not work');
-    googleClientId = '';
+    console.warn('Config load failed');
   }
 
   // Check if user is already logged in
@@ -159,9 +157,6 @@ function getHeaders(extra = {}) {
 }
 
 function initAuth() {
-  // Wire up Google GSI if library is ready
-  initGoogleSignIn();
-
   // Auth modal tab switching
   document.getElementById('tab-btn-login')?.addEventListener('click', () => {
     document.getElementById('login-form').style.display    = 'block';
@@ -223,140 +218,6 @@ function initAuth() {
     document.getElementById('auth-modal').classList.add('active');
   });
 }
-
-function initGoogleSignIn() {
-  const GOOGLE_CLIENT_ID = googleClientId;  // loaded from /api/config → env var
-
-  // Wire up the custom fallback button click regardless of GSI state
-  const customBtn = document.getElementById('custom-google-btn');
-  if (customBtn) {
-    customBtn.onclick = () => triggerGoogleSignIn();
-  }
-
-  function triggerGoogleSignIn() {
-    if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
-      try {
-        google.accounts.id.initialize({
-          client_id: GOOGLE_CLIENT_ID,
-          callback: handleGoogleSignIn,
-          auto_select: false,
-          cancel_on_tap_outside: true
-        });
-        google.accounts.id.prompt((notification) => {
-          // If One Tap is suppressed/unavailable, show the GSI popup via oauth2
-          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-            openGoogleOAuth2Popup();
-          }
-        });
-      } catch (err) {
-        console.warn('GSI prompt error, falling back to popup:', err);
-        openGoogleOAuth2Popup();
-      }
-    } else {
-      // GSI not loaded yet — open manual OAuth popup
-      openGoogleOAuth2Popup();
-    }
-  }
-
-  function openGoogleOAuth2Popup() {
-    // Use Google OAuth2 token endpoint (implicit/popup flow) which doesn't need server-side exchange
-    const redirectUri = encodeURIComponent(window.location.origin + '/api/auth/google/callback');
-    const scope = encodeURIComponent('openid email profile');
-    const url = `https://accounts.google.com/o/oauth2/v2/auth?` +
-      `client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}` +
-      `&redirect_uri=${redirectUri}` +
-      `&response_type=token` +
-      `&scope=${scope}` +
-      `&prompt=select_account`;
-
-    const w = 500, h = 600;
-    const left = (screen.width / 2) - (w / 2);
-    const top  = (screen.height / 2) - (h / 2);
-    window.open(url, 'googleOAuth', `width=${w},height=${h},top=${top},left=${left}`);
-  }
-
-  // Attempt to render the official GSI button in the container
-  function tryRenderGSI(attempts) {
-    if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
-      try {
-        google.accounts.id.initialize({
-          client_id: GOOGLE_CLIENT_ID,
-          callback: handleGoogleSignIn,
-          auto_select: false
-        });
-        const container = document.getElementById('google-signin-btn');
-        if (container) {
-          // Replace the custom button with the real GSI button
-          google.accounts.id.renderButton(container, {
-            theme: 'outline',
-            size: 'large',
-            text: 'continue_with',
-            width: 340
-          });
-        }
-      } catch (err) {
-        console.warn('GSI renderButton error:', err);
-      }
-    } else if (attempts > 0) {
-      setTimeout(() => tryRenderGSI(attempts - 1), 600);
-    }
-  }
-
-  tryRenderGSI(25); // Retry for up to 15 seconds
-}
-
-async function handleGoogleSignIn(response) {
-  try {
-    const token   = response.credential;
-    const parts   = token.split('.');
-    const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-    const res     = await fetch('/api/auth/google', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: payload.email, name: payload.name, picture: payload.picture })
-    });
-    const data = await res.json();
-    if (res.ok && data.token) {
-      onAuthSuccess(data.token, data.user);
-    } else {
-      alert(data.error || 'Google Sign-In failed. Please try again.');
-    }
-  } catch (err) {
-    console.error('Google Sign-In error:', err);
-    alert('Google Sign-In failed. Please try email/password login.');
-  }
-}
-
-// Handle access_token from OAuth2 implicit flow (popup redirect)
-async function handleGoogleAccessToken(accessToken) {
-  try {
-    // Fetch user profile from Google's userinfo endpoint
-    const profileRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    if (!profileRes.ok) throw new Error('Failed to fetch Google profile');
-    const profile = await profileRes.json();
-
-    const res = await fetch('/api/auth/google', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email:   profile.email,
-        name:    profile.name || profile.email.split('@')[0],
-        picture: profile.picture || ''
-      })
-    });
-    const data = await res.json();
-    if (res.ok && data.token) {
-      onAuthSuccess(data.token, data.user);
-    } else {
-      console.error('Google auth failed:', data.error);
-    }
-  } catch (err) {
-    console.error('handleGoogleAccessToken error:', err);
-  }
-}
-
 
 function onAuthSuccess(token, user) {
   localStorage.setItem('vault_token', token);
@@ -477,9 +338,9 @@ function initSearchAndFilters() {
     if (parent) parent.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
     pill.classList.add('active');
 
-    if (type === 'niche')  { filterNiche  = val; filterStatus = 'All'; filterRel = 'All'; }
-    if (type === 'status') { filterStatus = val; filterRel = 'All';    filterNiche = 'All'; resetNicheActive(); }
-    if (type === 'rel')    { filterRel    = val; filterStatus = 'All'; filterNiche = 'All'; resetNicheActive(); }
+    if (type === 'niche')  { filterNiche  = val; }
+    if (type === 'status') { filterStatus = val; }
+    if (type === 'rel')    { filterRel    = val; }
     if (type === 'acq')    { filterAcq    = val; }
 
     fetchBacklinks();
@@ -595,10 +456,16 @@ function renderVaultTable(links) {
       <td>${statusBadge}</td>
       <td><div class="score-badge ${scoreClass}">${item.value_score || 0}</div></td>
       <td>
+        <div style="display: flex; gap: 4px;">
+        ${(currentUser && currentUser.role === 'admin') 
+          ? `<button class="btn btn-secondary" onclick='openEditModal(${JSON.stringify(item).replace(/'/g, "&#39;")})'
+               style="padding:4px 8px; font-size:11px;" title="Edit">✏️</button>`
+          : ''}
         ${canDelete
           ? `<button class="btn btn-secondary" onclick="deleteLink(${item.id})"
-               style="padding:4px 8px; font-size:11px; color:var(--accent-rose);" title="Delete">✕</button>`
+               style="padding:4px 8px; font-size:11px; color:var(--accent-rose);" title="Delete">🗑</button>`
           : ''}
+        </div>
       </td>
     `;
     tbody.appendChild(tr);
@@ -1301,3 +1168,39 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
+
+// Edit Backlink (Admin Only)
+window.openEditModal = function(item) {
+  document.getElementById('edit-modal-id').value = item.id;
+  document.getElementById('edit-modal-url').value = item.url;
+  document.getElementById('edit-modal-target-url').value = item.target_url || "";
+  document.getElementById('edit-modal-anchor').value = item.anchor_text || "";
+  document.getElementById('edit-modal-niche').value = item.niche || "General";
+  document.getElementById('edit-modal').classList.add('active');
+};
+
+document.getElementById('save-edit-btn')?.addEventListener('click', async () => {
+  const id = document.getElementById('edit-modal-id').value;
+  const url = document.getElementById('edit-modal-url').value;
+  const targetUrl = document.getElementById('edit-modal-target-url').value;
+  const anchorText = document.getElementById('edit-modal-anchor').value;
+  const niche = document.getElementById('edit-modal-niche').value;
+
+  try {
+    const res = await fetch(`/api/admin/backlinks/${id}/edit`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ url, target_url: targetUrl, anchor_text: anchorText, niche })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      document.getElementById('edit-modal').classList.remove('active');
+      fetchBacklinks();
+    } else {
+      alert(data.error || "Failed to update backlink");
+    }
+  } catch (err) {
+    console.error("Error saving edit:", err);
+  }
+});
+

@@ -3,8 +3,10 @@ import sys
 import json
 import sqlite3
 import urllib.request
-import urllib.error
 import urllib.parse
+import urllib.error
+import ssl
+from bs4 import BeautifulSoup
 import re
 import time
 import threading
@@ -32,10 +34,8 @@ if os.path.exists(env_path):
 
 PORT = 8080
 SECRET_KEY = os.environ.get("SECRET_KEY", "vault_default_secret_key_2026")
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "ryn.ahmed101@gmail.com").strip().lower()
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "Ryan@1206")
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip(' \t\n\r"\'')
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip(' \t\n\r"\'')
+ADMIN_EMAIL = "ryn.ahmed101@gmail.com"
+ADMIN_PASSWORD = "Ryan@1206"
 DEFAULT_BOT_DELAY = float(os.environ.get("BOT_DELAY", 1.0))
 
 USER_AGENTS = [
@@ -486,26 +486,35 @@ class BotWorker(threading.Thread):
         site_desc = ""
         elapsed_ms = 0
 
+        ctx = ssl._create_unverified_context()
+
         try:
-            with urllib.request.urlopen(req, timeout=8) as response:
+            with urllib.request.urlopen(req, timeout=8, context=ctx) as response:
                 http_code = response.getcode()
                 elapsed_ms = int((time.time() - start_time) * 1000)
-                # Limit to 64KB to prevent memory spikes (was 250KB)
                 raw_data = response.read(65536)
                 try:
                     html_text = raw_data.decode('utf-8', errors='ignore')
                 except Exception:
                     html_text = ""
 
-                title_match = re.search(r'<title[^>]*>(.*?)</title>', html_text, re.IGNORECASE | re.DOTALL)
-                if title_match:
-                    site_title = re.sub(r'\s+', ' ', title_match.group(1).strip())[:120]
+                soup = BeautifulSoup(html_text, 'html.parser')
+                
+                if soup.title and soup.title.string:
+                    site_title = ' '.join(soup.title.string.split())[:120]
+                
+                desc_meta = soup.find('meta', attrs={'name': lambda x: x and x.lower() == 'description'})
+                if not desc_meta:
+                    desc_meta = soup.find('meta', attrs={'property': lambda x: x and x.lower() == 'og:description'})
+                
+                if desc_meta and desc_meta.get('content'):
+                    site_desc = ' '.join(desc_meta['content'].split())[:200]
+                
+                # Append h1/h2 text to the html_text buffer so categorizer can use it
+                headings = [h.get_text(separator=' ', strip=True) for h in soup.find_all(['h1', 'h2'])]
+                if headings:
+                    html_text += " " + " ".join(headings)
 
-                desc_match = re.search(r'<meta\s+name=["\']description["\']\s+content=["\'](.*?)["\']', html_text, re.IGNORECASE)
-                if not desc_match:
-                    desc_match = re.search(r'<meta\s+property=["\']og:description["\']\s+content=["\'](.*?)["\']', html_text, re.IGNORECASE)
-                if desc_match:
-                    site_desc = desc_match.group(1).strip()[:200]
 
         except urllib.error.HTTPError as e:
             http_code = e.code
@@ -651,11 +660,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 return
 
             elif path == "/api/config":
-                # Serve the google client ID — read from env only (never hardcoded)
-                client_id = GOOGLE_CLIENT_ID
                 self._set_headers(200)
                 self.wfile.write(json.dumps({
-                    "google_client_id": client_id,
                     "admin_email": ADMIN_EMAIL
                 }).encode('utf-8'))
                 conn.close()

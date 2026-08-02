@@ -1,3 +1,6 @@
 # Backlink Vault Dependencies
 # Built using Python Standard Library (http.server, sqlite3, urllib, hashlib, secrets)
 # Zero external pip packages required for deployment!
+
+beautifulsoup4
+playwright
