@@ -34,8 +34,8 @@ PORT = 8080
 SECRET_KEY = os.environ.get("SECRET_KEY", "vault_default_secret_key_2026")
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "ryn.ahmed101@gmail.com").strip().lower()
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "Ryan@1206")
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip(' \t\n\r"\'')
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip(' \t\n\r"\'')
 DEFAULT_BOT_DELAY = float(os.environ.get("BOT_DELAY", 1.0))
 
 USER_AGENTS = [

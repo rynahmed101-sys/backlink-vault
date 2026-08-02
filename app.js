@@ -264,7 +264,7 @@ function initGoogleSignIn() {
     const scope = encodeURIComponent('openid email profile');
     const url = `https://accounts.google.com/o/oauth2/v2/auth?` +
       `client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}` +
-      `&redirect_uri=${encodeURIComponent(window.location.origin)}` +
+      `&redirect_uri=${redirectUri}` +
       `&response_type=token` +
       `&scope=${scope}` +
       `&prompt=select_account`;
