@@ -15,9 +15,6 @@ import socket
 from datetime import datetime, timedelta
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
-# Global socket timeout to prevent any HTTP request/bot fetch from hanging sockets
-socket.setdefaulttimeout(10.0)
-
 # Set up paths & Environment Configuration
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "vault.db")
@@ -536,22 +533,26 @@ class BotWorker(threading.Thread):
 
         time.sleep(delay)
 
+class ReusableThreadingServer(ThreadingHTTPServer):
+    allow_reuse_address = True
+    daemon_threads = True
+
 # HTTP Request Handler
 class RequestHandler(BaseHTTPRequestHandler):
 
-    # Suppress default access logs going to stderr — Railway treats stderr as errors
+    # Log incoming HTTP requests to stdout so they appear in Railway logs
     def log_message(self, format, *args):
-        pass  # Silenced — use explicit print() calls for important events
+        print(f"[HTTP] {format % args}", flush=True)
 
     # Prevent connection reset errors from crashing request handling
-    def handle_error(self):
+    def handle_error(self, request, client_address):
         pass
 
     def handle_one_request(self):
         try:
             super().handle_one_request()
-        except (BrokenPipeError, ConnectionResetError):
-            pass  # Client disconnected — ignore
+        except (BrokenPipeError, ConnectionResetError, socket.timeout):
+            pass  # Client disconnected / timed out — ignore
         except Exception as e:
             print(f"[REQ-ERR] {e}", flush=True)
 
@@ -559,7 +560,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, HEAD")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         if cookie:
             self.send_header("Set-Cookie", cookie)
@@ -567,6 +568,14 @@ class RequestHandler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         self._set_headers(200)
+
+    def do_HEAD(self):
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        if path == "/health":
+            self._set_headers(200, "application/json")
+        else:
+            self._set_headers(200, "text/html")
 
     def do_GET(self):
         try:
@@ -1369,8 +1378,8 @@ def run_server(port=None):
     # --- Start Threading HTTP Server ---
     try:
         server_address = ('0.0.0.0', port)
-        httpd = ThreadingHTTPServer(server_address, RequestHandler)
-        print(f"[STARTUP] Threading Backlink Vault listening on http://0.0.0.0:{port}", flush=True)
+        httpd = ReusableThreadingServer(server_address, RequestHandler)
+        print(f"[STARTUP] ReusableThreadingServer listening on http://0.0.0.0:{port}", flush=True)
         print(f"[STARTUP] Health check: http://0.0.0.0:{port}/health", flush=True)
         httpd.serve_forever()
     except KeyboardInterrupt:
