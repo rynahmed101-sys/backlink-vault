@@ -40,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ── Config & Landing / App decision ──────────────────────────
 async function loadAppConfig() {
   try {
-    const res  = await fetch('/api/config');
+    const res  = await fetch('/api/config?t=' + new Date().getTime());
     const cfg  = await res.json();
     googleClientId = cfg.google_client_id || '';
   } catch (e) {
