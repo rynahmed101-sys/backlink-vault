@@ -24,6 +24,15 @@ let googleClientId     = '';
 
 // ── Boot ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  // Check for Google OAuth redirect hash token
+  if (window.location.hash.includes('access_token=')) {
+    const params = new URLSearchParams(window.location.hash.substring(1));
+    const accessToken = params.get('access_token');
+    if (accessToken) {
+      window.history.replaceState(null, null, window.location.pathname);
+      handleGoogleAccessToken(accessToken);
+    }
+  }
   loadAppConfig();          // fetch /api/config first → then decide landing vs app
   initCookieBanner();
 });
@@ -35,7 +44,8 @@ async function loadAppConfig() {
     const cfg  = await res.json();
     googleClientId = cfg.google_client_id || '';
   } catch (e) {
-    console.warn('Config load failed, continuing…');
+    console.warn('Config load failed, Google Sign-In may not work');
+    googleClientId = '';
   }
 
   // Check if user is already logged in
@@ -215,46 +225,84 @@ function initAuth() {
 }
 
 function initGoogleSignIn() {
+  const GOOGLE_CLIENT_ID = googleClientId;  // loaded from /api/config → env var
+
+  // Wire up the custom fallback button click regardless of GSI state
   const customBtn = document.getElementById('custom-google-btn');
   if (customBtn) {
-    customBtn.onclick = () => {
-      const effectiveClientId = googleClientId || '1088831685341-CcijrCfZBuqDzBWp3qSrBEZCqBUfQVz4CWGHWF91iaEw.apps.googleusercontent.com';
-      if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
-        google.accounts.id.initialize({
-          client_id: effectiveClientId,
-          callback: handleGoogleSignIn
-        });
-        google.accounts.id.prompt();
-      } else {
-        alert('Google Sign-In is initializing. Please try clicking again in a moment.');
-      }
-    };
+    customBtn.onclick = () => triggerGoogleSignIn();
   }
 
-  function tryInit(attempts) {
-    const effectiveClientId = googleClientId || '1088831685341-CcijrCfZBuqDzBWp3qSrBEZCqBUfQVz4CWGHWF91iaEw.apps.googleusercontent.com';
-    if (typeof google !== 'undefined' && google.accounts && google.accounts.id && effectiveClientId) {
+  function triggerGoogleSignIn() {
+    if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
       try {
         google.accounts.id.initialize({
-          client_id: effectiveClientId,
+          client_id: GOOGLE_CLIENT_ID,
+          callback: handleGoogleSignIn,
+          auto_select: false,
+          cancel_on_tap_outside: true
+        });
+        google.accounts.id.prompt((notification) => {
+          // If One Tap is suppressed/unavailable, show the GSI popup via oauth2
+          if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+            openGoogleOAuth2Popup();
+          }
+        });
+      } catch (err) {
+        console.warn('GSI prompt error, falling back to popup:', err);
+        openGoogleOAuth2Popup();
+      }
+    } else {
+      // GSI not loaded yet — open manual OAuth popup
+      openGoogleOAuth2Popup();
+    }
+  }
+
+  function openGoogleOAuth2Popup() {
+    // Use Google OAuth2 token endpoint (implicit/popup flow) which doesn't need server-side exchange
+    const redirectUri = encodeURIComponent(window.location.origin + '/api/auth/google/callback');
+    const scope = encodeURIComponent('openid email profile');
+    const url = `https://accounts.google.com/o/oauth2/v2/auth?` +
+      `client_id=${encodeURIComponent(GOOGLE_CLIENT_ID)}` +
+      `&redirect_uri=${encodeURIComponent(window.location.origin)}` +
+      `&response_type=token` +
+      `&scope=${scope}` +
+      `&prompt=select_account`;
+
+    const w = 500, h = 600;
+    const left = (screen.width / 2) - (w / 2);
+    const top  = (screen.height / 2) - (h / 2);
+    window.open(url, 'googleOAuth', `width=${w},height=${h},top=${top},left=${left}`);
+  }
+
+  // Attempt to render the official GSI button in the container
+  function tryRenderGSI(attempts) {
+    if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
+      try {
+        google.accounts.id.initialize({
+          client_id: GOOGLE_CLIENT_ID,
           callback: handleGoogleSignIn,
           auto_select: false
         });
         const container = document.getElementById('google-signin-btn');
         if (container) {
-          google.accounts.id.renderButton(
-            container,
-            { theme: 'outline', size: 'large', text: 'continue_with', width: 340 }
-          );
+          // Replace the custom button with the real GSI button
+          google.accounts.id.renderButton(container, {
+            theme: 'outline',
+            size: 'large',
+            text: 'continue_with',
+            width: 340
+          });
         }
       } catch (err) {
-        console.warn('GSI render error:', err);
+        console.warn('GSI renderButton error:', err);
       }
     } else if (attempts > 0) {
-      setTimeout(() => tryInit(attempts - 1), 500);
+      setTimeout(() => tryRenderGSI(attempts - 1), 600);
     }
   }
-  tryInit(20);
+
+  tryRenderGSI(25); // Retry for up to 15 seconds
 }
 
 async function handleGoogleSignIn(response) {
@@ -278,6 +326,37 @@ async function handleGoogleSignIn(response) {
     alert('Google Sign-In failed. Please try email/password login.');
   }
 }
+
+// Handle access_token from OAuth2 implicit flow (popup redirect)
+async function handleGoogleAccessToken(accessToken) {
+  try {
+    // Fetch user profile from Google's userinfo endpoint
+    const profileRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (!profileRes.ok) throw new Error('Failed to fetch Google profile');
+    const profile = await profileRes.json();
+
+    const res = await fetch('/api/auth/google', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email:   profile.email,
+        name:    profile.name || profile.email.split('@')[0],
+        picture: profile.picture || ''
+      })
+    });
+    const data = await res.json();
+    if (res.ok && data.token) {
+      onAuthSuccess(data.token, data.user);
+    } else {
+      console.error('Google auth failed:', data.error);
+    }
+  } catch (err) {
+    console.error('handleGoogleAccessToken error:', err);
+  }
+}
+
 
 function onAuthSuccess(token, user) {
   localStorage.setItem('vault_token', token);

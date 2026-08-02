@@ -6,6 +6,8 @@
   <title>Backlink Vault | Intelligent Backlink Discovery & Auditing Platform</title>
   <meta name="description" content="Backlink Vault is a powerful SEO tool for discovering, auditing, and managing high-authority backlinks. Automated bot inspection with DA scoring, DoFollow detection, and acquisition categorization.">
   <link rel="stylesheet" href="styles.css">
+  <!-- Google Identity Services — initialized dynamically by app.js after /api/config fetch -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 </head>
@@ -764,8 +766,6 @@
     <button class="btn btn-primary" onclick="acceptCookies()" style="padding: 6px 18px; font-size: 12px; white-space: nowrap;">Accept</button>
   </div>
 
-  <!-- Load Google Identity Services AFTER DOM -->
-  <script src="https://accounts.google.com/gsi/client" async></script>
   <script src="app.js"></script>
 </body>
 </html>

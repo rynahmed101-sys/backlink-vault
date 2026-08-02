@@ -31,8 +31,10 @@ if os.path.exists(env_path):
 
 PORT = int(os.environ.get("PORT", 8000))
 SECRET_KEY = os.environ.get("SECRET_KEY", "vault_default_secret_key_2026")
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@vault.com").strip().lower()
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "ryn.ahmed101@gmail.com").strip().lower()
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "Ryan@1206")
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
 DEFAULT_BOT_DELAY = float(os.environ.get("BOT_DELAY", 1.0))
 
 USER_AGENTS = [
@@ -553,6 +555,16 @@ class RequestHandler(BaseHTTPRequestHandler):
                 }).encode('utf-8'))
                 return
 
+            # Google OAuth2 redirect callback — serve index.html so JS handles the hash token
+            elif path in ["/api/auth/google/callback", "/auth/callback"]:
+                return self._serve_file(os.path.join(STATIC_DIR, "index.html"), "text/html")
+
+            # Favicon — serve empty to avoid 404 noise
+            elif path == "/favicon.ico":
+                self.send_response(204)
+                self.end_headers()
+                return
+
             current_user = get_auth_user(self.headers)
 
             conn = sqlite3.connect(DB_PATH)
@@ -572,8 +584,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 return
 
             elif path == "/api/config":
-                default_client_id = "1088831685341-CcijrCfZBuqDzBWp3qSrBEZCqBUfQVz4CWGHWF91iaEw.apps.googleusercontent.com"
-                client_id = os.environ.get("GOOGLE_CLIENT_ID", "").strip() or default_client_id
+                # Serve the google client ID — read from env only (never hardcoded)
+                client_id = GOOGLE_CLIENT_ID
                 self._set_headers(200)
                 self.wfile.write(json.dumps({
                     "google_client_id": client_id,
