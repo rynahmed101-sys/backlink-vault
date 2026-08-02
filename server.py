@@ -404,119 +404,159 @@ class BotWorker(threading.Thread):
     def __init__(self):
         super().__init__()
         self.daemon = True
+        self.name = "BotWorker"
 
     def log(self, link_id, message, level="info"):
         timestamp = datetime.now().strftime("%H:%M:%S")
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO bot_logs (link_id, timestamp, message, level) VALUES (?, ?, ?, ?)",
-                       (link_id, timestamp, message, level))
-        cursor.execute("DELETE FROM bot_logs WHERE id NOT IN (SELECT id FROM bot_logs ORDER BY id DESC LIMIT 100)")
-        conn.commit()
-        conn.close()
+        try:
+            conn = sqlite3.connect(DB_PATH, timeout=10)
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO bot_logs (link_id, timestamp, message, level) VALUES (?, ?, ?, ?)",
+                           (link_id, timestamp, message, level))
+            cursor.execute("DELETE FROM bot_logs WHERE id NOT IN (SELECT id FROM bot_logs ORDER BY id DESC LIMIT 100)")
+            conn.commit()
+            conn.close()
+        except Exception as log_err:
+            print(f"[BOT-LOG-ERR] {log_err}", flush=True)
 
     def run(self):
-        print("Bot Inspector Worker started.")
+        import traceback
+        print("[BOT] Inspector Worker started.", flush=True)
         agent_idx = 0
+
         while True:
             try:
-                conn = sqlite3.connect(DB_PATH)
-                cursor = conn.cursor()
-                
-                cursor.execute("SELECT value FROM bot_settings WHERE key = 'status'")
-                status_row = cursor.fetchone()
-                bot_status = status_row[0] if status_row else "running"
-
-                cursor.execute("SELECT value FROM bot_settings WHERE key = 'delay'")
-                delay_row = cursor.fetchone()
-                delay = float(delay_row[0]) if delay_row else 1.0
-
-                if bot_status != "running":
-                    conn.close()
-                    time.sleep(2)
-                    continue
-
-                cursor.execute("SELECT id, url, target_url FROM backlinks WHERE status IN ('Approved', 'Re-scan', 'Queued') ORDER BY id ASC LIMIT 1")
-                row = cursor.fetchone()
-
-                if not row:
-                    conn.close()
-                    time.sleep(3)
-                    continue
-
-                link_id, url, target_url = row
-                cursor.execute("UPDATE backlinks SET status = 'Auditing' WHERE id = ?", (link_id,))
-                conn.commit()
-                conn.close()
-
-                self.log(link_id, f"Auditing approved site: {url}", "info")
-
-                ua = USER_AGENTS[agent_idx % len(USER_AGENTS)]
+                self._tick(agent_idx)
                 agent_idx += 1
-                
-                req = urllib.request.Request(url, headers={'User-Agent': ua, 'Accept': 'text/html,application/xhtml+xml'})
-                start_time = time.time()
-                http_code = 0
-                html_text = ""
-                site_title = ""
-                site_desc = ""
+            except SystemExit:
+                print("[BOT] SystemExit caught — worker stopping.", flush=True)
+                break
+            except BaseException as fatal_err:
+                # Catch EVERYTHING — including MemoryError, KeyboardInterrupt etc.
+                print(f"[BOT-FATAL] Unhandled exception in BotWorker: {fatal_err}", file=sys.stderr, flush=True)
+                traceback.print_exc(file=sys.stderr)
+                time.sleep(5)  # Back off, then keep running
 
-                try:
-                    with urllib.request.urlopen(req, timeout=5) as response:
-                        http_code = response.getcode()
-                        elapsed_ms = int((time.time() - start_time) * 1000)
-                        raw_data = response.read(250000)
-                        try: html_text = raw_data.decode('utf-8', errors='ignore')
-                        except Exception: html_text = ""
+    def _tick(self, agent_idx):
+        """Single bot iteration — isolated so exceptions don't kill the loop."""
+        try:
+            conn = sqlite3.connect(DB_PATH, timeout=10)
+            cursor = conn.cursor()
 
-                        title_match = re.search(r'<title[^>]*>(.*?)</title>', html_text, re.IGNORECASE | re.DOTALL)
-                        if title_match:
-                            site_title = re.sub(r'\s+', ' ', title_match.group(1).strip())[:120]
+            cursor.execute("SELECT value FROM bot_settings WHERE key = 'status'")
+            status_row = cursor.fetchone()
+            bot_status = status_row[0] if status_row else "running"
 
-                        desc_match = re.search(r'<meta\s+name=["\']description["\']\s+content=["\'](.*?)["\']', html_text, re.IGNORECASE)
-                        if not desc_match:
-                            desc_match = re.search(r'<meta\s+property=["\']og:description["\']\s+content=["\'](.*?)["\']', html_text, re.IGNORECASE)
-                        if desc_match:
-                            site_desc = desc_match.group(1).strip()[:200]
+            cursor.execute("SELECT value FROM bot_settings WHERE key = 'delay'")
+            delay_row = cursor.fetchone()
+            delay = max(2.0, float(delay_row[0]) if delay_row else 2.0)  # Minimum 2s delay
 
-                except urllib.error.HTTPError as e:
-                    http_code = e.code
-                    elapsed_ms = int((time.time() - start_time) * 1000)
-                    self.log(link_id, f"HTTP Error {http_code} for {url}", "warning")
-                except Exception as e:
-                    http_code = 0
-                    elapsed_ms = int((time.time() - start_time) * 1000)
-                    self.log(link_id, f"Connection Failed for {url}: {str(e)[:50]}", "error")
-
-                niche = categorize_niche(site_title, site_desc, url)
-                da, val_score, rel_type, risk_score = calculate_metrics(url, http_code, elapsed_ms, html_text, target_url)
-
-                final_status = "Active" if http_code in [200, 301, 302] else "Broken"
-                now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-                acq_type = determine_acquisition_type(site_title, site_desc, url, html_text)
-
-                conn = sqlite3.connect(DB_PATH)
-                cursor = conn.cursor()
-                cursor.execute('''
-                    UPDATE backlinks SET
-                        niche = ?, da_score = ?, value_score = ?, status = ?,
-                        http_code = ?, rel_type = ?, site_title = ?, site_description = ?,
-                        response_time_ms = ?, risk_score = ?, last_checked = ?, acquisition_type = ?
-                    WHERE id = ?
-                ''', (niche, da, val_score, final_status, http_code, rel_type, site_title or url, site_desc, elapsed_ms, risk_score, now_str, acq_type, link_id))
-                conn.commit()
+            if bot_status != "running":
                 conn.close()
+                time.sleep(2)
+                return
 
-                self.log(link_id, f"Verified {url} -> Niche: {niche} | DA: {da} | Score: {val_score}/100", "success")
-                time.sleep(delay)
+            cursor.execute("SELECT id, url, target_url FROM backlinks WHERE status IN ('Approved', 'Re-scan', 'Queued') ORDER BY id ASC LIMIT 1")
+            row = cursor.fetchone()
 
-            except Exception as outer_err:
-                print(f"Bot error: {outer_err}")
+            if not row:
+                conn.close()
                 time.sleep(3)
+                return
+
+            link_id, url, target_url = row
+            cursor.execute("UPDATE backlinks SET status = 'Auditing' WHERE id = ?", (link_id,))
+            conn.commit()
+            conn.close()
+
+        except Exception as db_err:
+            print(f"[BOT-DB-ERR] {db_err}", flush=True)
+            time.sleep(3)
+            return
+
+        # --- HTTP fetch (outside DB connection) ---
+        ua = USER_AGENTS[agent_idx % len(USER_AGENTS)]
+        req = urllib.request.Request(url, headers={'User-Agent': ua, 'Accept': 'text/html,application/xhtml+xml'})
+        start_time = time.time()
+        http_code = 0
+        html_text = ""
+        site_title = ""
+        site_desc = ""
+        elapsed_ms = 0
+
+        try:
+            with urllib.request.urlopen(req, timeout=8) as response:
+                http_code = response.getcode()
+                elapsed_ms = int((time.time() - start_time) * 1000)
+                # Limit to 64KB to prevent memory spikes (was 250KB)
+                raw_data = response.read(65536)
+                try:
+                    html_text = raw_data.decode('utf-8', errors='ignore')
+                except Exception:
+                    html_text = ""
+
+                title_match = re.search(r'<title[^>]*>(.*?)</title>', html_text, re.IGNORECASE | re.DOTALL)
+                if title_match:
+                    site_title = re.sub(r'\s+', ' ', title_match.group(1).strip())[:120]
+
+                desc_match = re.search(r'<meta\s+name=["\']description["\']\s+content=["\'](.*?)["\']', html_text, re.IGNORECASE)
+                if not desc_match:
+                    desc_match = re.search(r'<meta\s+property=["\']og:description["\']\s+content=["\'](.*?)["\']', html_text, re.IGNORECASE)
+                if desc_match:
+                    site_desc = desc_match.group(1).strip()[:200]
+
+        except urllib.error.HTTPError as e:
+            http_code = e.code
+            elapsed_ms = int((time.time() - start_time) * 1000)
+        except Exception as e:
+            http_code = 0
+            elapsed_ms = int((time.time() - start_time) * 1000)
+
+        # Free HTML from memory immediately after parsing
+        niche = categorize_niche(site_title, site_desc, url)
+        da, val_score, rel_type, risk_score = calculate_metrics(url, http_code, elapsed_ms, html_text, target_url)
+        final_status = "Active" if http_code in [200, 301, 302] else "Broken"
+        acq_type = determine_acquisition_type(site_title, site_desc, url, html_text)
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        html_text = ""  # Explicitly free memory
+
+        # --- Write results back to DB ---
+        try:
+            conn = sqlite3.connect(DB_PATH, timeout=10)
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE backlinks SET
+                    niche = ?, da_score = ?, value_score = ?, status = ?,
+                    http_code = ?, rel_type = ?, site_title = ?, site_description = ?,
+                    response_time_ms = ?, risk_score = ?, last_checked = ?, acquisition_type = ?
+                WHERE id = ?
+            ''', (niche, da, val_score, final_status, http_code, rel_type, site_title or url, site_desc, elapsed_ms, risk_score, now_str, acq_type, link_id))
+            conn.commit()
+            conn.close()
+            print(f"[BOT] {url[:60]} → {final_status} | DA:{da} Score:{val_score}", flush=True)
+        except Exception as write_err:
+            print(f"[BOT-WRITE-ERR] {write_err}", flush=True)
+
+        time.sleep(delay)
 
 # HTTP Request Handler
 class RequestHandler(BaseHTTPRequestHandler):
+
+    # Suppress default access logs going to stderr — Railway treats stderr as errors
+    def log_message(self, format, *args):
+        pass  # Silenced — use explicit print() calls for important events
+
+    # Prevent connection reset errors from crashing request handling
+    def handle_error(self):
+        pass
+
+    def handle_one_request(self):
+        try:
+            super().handle_one_request()
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # Client disconnected — ignore
+        except Exception as e:
+            print(f"[REQ-ERR] {e}", flush=True)
 
     def _set_headers(self, status=200, content_type="application/json", cookie=None):
         self.send_response(status)
