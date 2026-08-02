@@ -34,8 +34,8 @@ if os.path.exists(env_path):
 
 PORT = 8080
 SECRET_KEY = os.environ.get("SECRET_KEY", "vault_default_secret_key_2026")
-ADMIN_EMAIL = "ryn.ahmed101@gmail.com"
-ADMIN_PASSWORD = "Ryan@1206"
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "ryn.ahmed101@gmail.com").strip().lower()
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "Ryan@1206")
 DEFAULT_BOT_DELAY = float(os.environ.get("BOT_DELAY", 1.0))
 
 USER_AGENTS = [
