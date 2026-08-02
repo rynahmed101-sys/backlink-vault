@@ -1386,7 +1386,6 @@ def run_server(port=None):
     print(f"[STARTUP] DB_PATH:  {DB_PATH}", flush=True)
     print(f"[STARTUP] PORT:     {port}", flush=True)
     print(f"[STARTUP] ADMIN:    {ADMIN_EMAIL}", flush=True)
-    print(f"[STARTUP] GOOGLE:   {'SET' if GOOGLE_CLIENT_ID else 'NOT SET'}", flush=True)
 
     # --- Init Database ---
     try:
