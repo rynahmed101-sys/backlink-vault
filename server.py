@@ -545,16 +545,21 @@ class ReusableThreadingServer(ThreadingHTTPServer):
     allow_reuse_address = True
     daemon_threads = True
 
+    def handle_error(self, request, client_address):
+        # Suppress noisy broken pipe / reset errors at the server level
+        import sys
+        err = sys.exc_info()[1]
+        if isinstance(err, (ConnectionResetError, BrokenPipeError, socket.timeout)):
+            return
+        super().handle_error(request, client_address)
+
 # HTTP Request Handler
 class RequestHandler(BaseHTTPRequestHandler):
+    timeout = 10  # Drop idle connections to prevent thread leaks
 
     # Log incoming HTTP requests to stdout so they appear in Railway logs
     def log_message(self, format, *args):
         print(f"[HTTP] {format % args}", flush=True)
-
-    # Prevent connection reset errors from crashing request handling
-    def handle_error(self, request, client_address):
-        pass
 
     def handle_one_request(self):
         try:
@@ -563,6 +568,11 @@ class RequestHandler(BaseHTTPRequestHandler):
             pass  # Client disconnected / timed out — ignore
         except Exception as e:
             print(f"[REQ-ERR] {e}", flush=True)
+        finally:
+            # CRITICAL FIX for Railway 502s:
+            # Force close_connection so Python doesn't wait for keep-alive.
+            # Without this, proxy waits for EOF indefinitely because we don't send Content-Length.
+            self.close_connection = True
 
     def _set_headers(self, status=200, content_type="application/json", cookie=None):
         try:
@@ -571,6 +581,7 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, HEAD")
             self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+            self.send_header("Connection", "close")  # Tell the proxy we are done
             if cookie:
                 self.send_header("Set-Cookie", cookie)
             self.end_headers()
