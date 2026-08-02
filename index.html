@@ -30,25 +30,41 @@
           Submit / Upload
         </div>
 
-        <!-- Admin Only Tab -->
+        <div class="nav-item" data-tab="personal">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          Personal Tracker
+        </div>
+
+        <div class="nav-item" data-tab="pages">
+          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+          Info & About Us
+        </div>
+
+        <!-- Admin Only Tabs -->
+        <div class="nav-item admin-only" data-tab="cms" style="display: none;">
+          <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+          Admin CMS & Ads
+        </div>
+
         <div class="nav-item admin-only" data-tab="approvals" style="display: none;">
           <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
           Admin Approvals
           <span class="badge badge-pending" id="pending-approval-badge" style="margin-left: auto; font-size: 10px;">0</span>
         </div>
 
-        <!-- Admin Only Tab -->
         <div class="nav-item admin-only" data-tab="bot" style="display: none;">
           <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="10" rx="2"></rect><circle cx="12" cy="5" r="2"></circle><path d="M12 7v4"></path></svg>
           Tiny Bot Stream
         </div>
 
-        <!-- Admin Only Tab -->
         <div class="nav-item admin-only" data-tab="analytics" style="display: none;">
           <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
           Analytics & Niche
         </div>
       </nav>
+
+      <!-- Sidebar Ad Slot -->
+      <div id="ad-slot-sidebar" class="ad-slot-container"></div>
 
       <!-- Sidebar Bot Widget (Admin Only) -->
       <div class="sidebar-bot-widget admin-only" style="display: none;">
@@ -72,6 +88,9 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
           <input type="text" id="search-input" placeholder="Search backlinks by URL, title, or target page...">
         </div>
+
+        <!-- Header Ad Slot -->
+        <div id="ad-slot-header" class="ad-slot-container" style="flex: 1; margin: 0 16px;"></div>
 
         <div class="header-actions">
           <button class="btn btn-secondary admin-only" id="export-csv-btn" style="display: none;">
@@ -132,6 +151,13 @@
               <div class="pill" data-filter-type="status" data-value="Pending Approval">Pending Approval</div>
               <div class="pill" data-filter-type="rel" data-value="DoFollow">DoFollow Only</div>
             </div>
+            <div class="filter-pills">
+              <div class="pill active" data-filter-type="acq" data-value="All">All Acquisition Types</div>
+              <div class="pill" data-filter-type="acq" data-value="Easy Do-Follow">Easy Do-Follow</div>
+              <div class="pill" data-filter-type="acq" data-value="Persuasion / Outreach">Outreach / Guest Post</div>
+              <div class="pill" data-filter-type="acq" data-value="Paid / Sponsored">Paid / Sponsored</div>
+              <div class="pill" data-filter-type="acq" data-value="Directory / Profile">Directory</div>
+            </div>
           </div>
 
           <!-- Vault Table -->
@@ -142,6 +168,7 @@
                   <th>Target Webpage & Title</th>
                   <th>Submitted By</th>
                   <th>Niche</th>
+                  <th>Acquisition Type</th>
                   <th>Est. DA</th>
                   <th>Relation</th>
                   <th>Approval Status</th>
@@ -158,9 +185,26 @@
 
         <!-- Tab 2: Upload / Submit Links -->
         <section id="tab-upload" class="tab-page" style="display: none;">
-          <div style="max-width: 720px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 24px;">
-            <h2 style="font-size: 20px; font-weight: 700;">Submit / Import Backlinks</h2>
+          <div style="max-width: 800px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 24px;">
             
+            <!-- Instructions & Company Information Card -->
+            <div style="background: rgba(34, 211, 238, 0.04); border: 1px solid var(--border-bright); border-radius: var(--radius-lg); padding: 24px;">
+              <h2 style="font-size: 18px; font-weight: 700; color: var(--accent-cyan); margin-bottom: 10px;">📋 Backlink Submission Guidelines</h2>
+              <p style="font-size: 13px; color: var(--text-muted); line-height: 1.6; margin-bottom: 14px;">
+                Submit individual URLs or upload bulk files (.csv, .xlsx, .txt). Our automated bot cleans domain formatting, removes tracking noise, checks response codes, classifies DoFollow / NoFollow equity, and calculates Domain Authority (DA).
+              </p>
+              <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+                <button class="btn btn-secondary" onclick="switchPageTab('about-us')" style="font-size: 12px; padding: 6px 14px;">About Us</button>
+                <button class="btn btn-secondary" onclick="switchPageTab('company-details')" style="font-size: 12px; padding: 6px 14px;">Company Details</button>
+                <button class="btn btn-secondary" onclick="switchPageTab('privacy-policy')" style="font-size: 12px; padding: 6px 14px;">Privacy Policy</button>
+                <button class="btn btn-secondary" onclick="switchPageTab('backlink-guide')" style="font-size: 12px; padding: 6px 14px;">Strategy Guide</button>
+              </div>
+            </div>
+
+            <!-- In-Content Ad Slot -->
+            <div id="ad-slot-content" class="ad-slot-container"></div>
+            
+            <!-- Drag & Drop Upload Zone -->
             <div class="upload-card" id="drop-zone">
               <div class="upload-icon">
                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
@@ -171,6 +215,7 @@
               <button class="btn btn-secondary" onclick="document.getElementById('file-input').click()">Browse Files</button>
             </div>
 
+            <!-- Bulk Text Paste -->
             <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 24px;">
               <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">Or Paste Bulk URLs</h3>
               <textarea id="bulk-urls-input" class="form-control" style="height: 140px; font-family: monospace; resize: vertical;" placeholder="https://example.com/article-1&#10;https://anotherblog.org/resources"></textarea>
@@ -181,7 +226,177 @@
           </div>
         </section>
 
-        <!-- Tab 3: Admin Approval Queue (Admin Only) -->
+        <!-- Tab 3: Personal Progress Tracker -->
+        <section id="tab-personal" class="tab-page" style="display: none;">
+          <div style="display: flex; flex-direction: column; gap: 24px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;">
+              <div>
+                <h2 style="font-size: 20px; font-weight: 700;">Personal Backlink Progress Tracker</h2>
+                <p style="font-size: 13px; color: var(--text-muted);">Track backlink building progress for your personal websites and client projects.</p>
+              </div>
+              <div style="display: flex; gap: 12px; align-items: center;">
+                <select id="personal-project-select" class="form-control" style="padding: 8px 14px; font-size: 13px; width: 180px;">
+                  <option value="">All Projects</option>
+                </select>
+                <button class="btn btn-primary" id="open-personal-modal-btn">+ Add Tracked Link</button>
+              </div>
+            </div>
+
+            <!-- Stats Grid for Personal Tracker -->
+            <div class="stats-grid">
+              <div class="stat-card">
+                <span class="stat-label">Total Tracked Links</span>
+                <span class="stat-value" id="pstat-total">0</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Live Backlinks</span>
+                <span class="stat-value" id="pstat-live" style="color: var(--accent-emerald);">0</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Indexed Links</span>
+                <span class="stat-value" id="pstat-indexed" style="color: var(--accent-cyan);">0</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-label">Avg. Domain Authority</span>
+                <span class="stat-value" id="pstat-avg-da" style="color: var(--accent-purple);">0</span>
+              </div>
+            </div>
+
+            <!-- Personal Tracker Table -->
+            <div class="table-card">
+              <table class="vault-table">
+                <thead>
+                  <tr>
+                    <th>Project</th>
+                    <th>Backlink URL</th>
+                    <th>Target Landing Page</th>
+                    <th>Anchor Text</th>
+                    <th>Acquisition Category</th>
+                    <th>Status</th>
+                    <th>Est. DA</th>
+                    <th>Notes</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="personal-table-body">
+                  <!-- Personal links injected via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 4: Info & About Us (Public CMS Page Viewer) -->
+        <section id="tab-pages" class="tab-page" style="display: none;">
+          <div style="max-width: 860px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 20px;">
+            <div class="filter-pills" id="cms-page-tabs">
+              <div class="pill active" onclick="loadCMSPage('about-us')">About Us</div>
+              <div class="pill" onclick="loadCMSPage('company-details')">Company Details</div>
+              <div class="pill" onclick="loadCMSPage('privacy-policy')">Privacy Policy</div>
+              <div class="pill" onclick="loadCMSPage('terms')">Terms of Service</div>
+              <div class="pill" onclick="loadCMSPage('backlink-guide')">Backlink Strategy Guide</div>
+            </div>
+
+            <div id="cms-page-display" class="cms-content-box">
+              <div style="text-align: center; color: var(--text-muted); padding: 40px;">Loading page content...</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tab 5: Admin CMS & Ads Manager (Admin Only) -->
+        <section id="tab-cms" class="tab-page" style="display: none;">
+          <div style="display: flex; flex-direction: column; gap: 24px; max-width: 900px; margin: 0 auto; width: 100%;">
+            <div>
+              <h2 style="font-size: 20px; font-weight: 700;">WordPress-Style Admin CMS & Ads Manager</h2>
+              <p style="font-size: 13px; color: var(--text-muted);">Manage site pages, Google Tag Manager / Analytics codes, Cookie notice, and custom ad space banners.</p>
+            </div>
+
+            <div class="filter-pills">
+              <div class="pill active" id="cms-tab-btn-pages" onclick="switchCMSTab('pages')">Page Content Editor</div>
+              <div class="pill" id="cms-tab-btn-settings" onclick="switchCMSTab('settings')">Site & Ads Settings</div>
+            </div>
+
+            <!-- Page Editor Section -->
+            <div id="cms-sec-pages" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 28px;">
+              <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 16px;">Edit Page Content</h3>
+              
+              <div class="form-group">
+                <label>Select Page</label>
+                <select id="cms-editor-slug" class="form-control" onchange="loadCMSEditorPage(this.value)">
+                  <option value="about-us">About Us</option>
+                  <option value="company-details">Company Details</option>
+                  <option value="privacy-policy">Privacy Policy</option>
+                  <option value="terms">Terms of Service</option>
+                  <option value="backlink-guide">Backlink Strategy Guide</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label>Page Title</label>
+                <input type="text" id="cms-editor-title" class="form-control" placeholder="Page Title">
+              </div>
+
+              <div class="form-group">
+                <label>HTML Content Editor</label>
+                <textarea id="cms-editor-content" class="form-control" style="height: 260px; font-family: monospace; resize: vertical;"></textarea>
+              </div>
+
+              <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+                <button class="btn btn-primary" id="save-cms-page-btn">Save Page Content</button>
+              </div>
+            </div>
+
+            <!-- Settings Editor Section -->
+            <div id="cms-sec-settings" style="display: none; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 28px;">
+              <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 16px;">Analytics, Cookie & Ads Settings</h3>
+
+              <div class="form-group">
+                <label>Google Analytics Measurement ID (e.g., G-XXXXXXXXXX)</label>
+                <input type="text" id="set-ga-id" class="form-control" placeholder="G-XXXXXXXXXX">
+              </div>
+
+              <div class="form-group">
+                <label>Google Tag Manager ID (e.g., GTM-XXXXXXX)</label>
+                <input type="text" id="set-gtm-id" class="form-control" placeholder="GTM-XXXXXXX">
+              </div>
+
+              <div class="form-group">
+                <label>Cookie Consent Banner Text</label>
+                <input type="text" id="set-cookie-text" class="form-control" placeholder="We use cookies to enhance your experience...">
+              </div>
+
+              <hr style="border: none; border-top: 1px solid var(--border-color); margin: 20px 0;">
+              <h4 style="font-size: 14px; font-weight: 600; color: var(--accent-cyan); margin-bottom: 12px;">Custom Ad Space Code (HTML / Scripts)</h4>
+
+              <div class="form-group">
+                <label>Header Banner Ad HTML</label>
+                <textarea id="set-ad-header" class="form-control" style="height: 70px; font-family: monospace;" placeholder="<a href='...'>Header Ad</a>"></textarea>
+              </div>
+
+              <div class="form-group">
+                <label>Sidebar Ad HTML</label>
+                <textarea id="set-ad-sidebar" class="form-control" style="height: 70px; font-family: monospace;" placeholder="Sidebar Ad Code"></textarea>
+              </div>
+
+              <div class="form-group">
+                <label>In-Content Ad HTML</label>
+                <textarea id="set-ad-content" class="form-control" style="height: 70px; font-family: monospace;" placeholder="In-Content Ad Code"></textarea>
+              </div>
+
+              <div class="form-group">
+                <label>Footer Ad HTML</label>
+                <textarea id="set-ad-footer" class="form-control" style="height: 70px; font-family: monospace;" placeholder="Footer Ad Code"></textarea>
+              </div>
+
+              <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+                <button class="btn btn-primary" id="save-cms-settings-btn">Save Settings & Ads</button>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- Tab 6: Admin Approval Queue (Admin Only) -->
         <section id="tab-approvals" class="tab-page" style="display: none;">
           <div style="display: flex; flex-direction: column; gap: 20px;">
             <div>
@@ -208,13 +423,13 @@
           </div>
         </section>
 
-        <!-- Tab 4: Tiny Bot Live Log (Admin Only) -->
+        <!-- Tab 7: Tiny Bot Live Log (Admin Only) -->
         <section id="tab-bot" class="tab-page" style="display: none;">
           <div style="display: flex; flex-direction: column; gap: 20px;">
             <div style="display: flex; align-items: center; justify-content: space-between;">
               <div>
                 <h2 style="font-size: 20px; font-weight: 700;">Tiny Bot Inspector Stream</h2>
-                <p style="font-size: 13px; color: var(--text-muted);">Sequentially auditing approved links with anti-block protection (2.5s delay)</p>
+                <p style="font-size: 13px; color: var(--text-muted);">Sequentially auditing approved links with anti-block protection (1.0s delay)</p>
               </div>
               <div style="display: flex; gap: 10px;">
                 <button class="btn btn-secondary" id="bot-toggle-main-btn">Pause Bot</button>
@@ -225,7 +440,7 @@
           </div>
         </section>
 
-        <!-- Tab 5: Analytics (Admin Only) -->
+        <!-- Tab 8: Analytics (Admin Only) -->
         <section id="tab-analytics" class="tab-page" style="display: none;">
           <div style="display: flex; flex-direction: column; gap: 24px;">
             <h2 style="font-size: 20px; font-weight: 700;">Backlink Analytics & Niche Matrix</h2>
@@ -243,12 +458,15 @@
           </div>
         </section>
 
+        <!-- Footer Ad Slot -->
+        <div id="ad-slot-footer" class="ad-slot-container"></div>
+
       </div>
     </main>
 
   </div>
 
-  <!-- Add / Submit Link Modal -->
+  <!-- Add / Submit Vault Link Modal -->
   <div class="modal-overlay" id="add-modal">
     <div class="modal">
       <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">Submit Backlink to Vault</h3>
@@ -275,6 +493,70 @@
     </div>
   </div>
 
+  <!-- Add / Edit Personal Backlink Modal -->
+  <div class="modal-overlay" id="personal-modal">
+    <div class="modal">
+      <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 16px;" id="personal-modal-title">Add Tracked Backlink</h3>
+      <input type="hidden" id="pmodal-id">
+      
+      <div class="form-group">
+        <label>Project Name *</label>
+        <input type="text" id="pmodal-project" class="form-control" placeholder="My SaaS App" required>
+      </div>
+
+      <div class="form-group">
+        <label>Backlink URL *</label>
+        <input type="url" id="pmodal-url" class="form-control" placeholder="https://directory.com/listing-123" required>
+      </div>
+
+      <div class="form-group">
+        <label>Target Page (Optional)</label>
+        <input type="url" id="pmodal-target" class="form-control" placeholder="https://mywebsite.com">
+      </div>
+
+      <div class="form-group">
+        <label>Anchor Text (Optional)</label>
+        <input type="text" id="pmodal-anchor" class="form-control" placeholder="best software">
+      </div>
+
+      <div class="form-group">
+        <label>Acquisition Category</label>
+        <select id="pmodal-acq" class="form-control">
+          <option value="Easy Do-Follow">Easy Do-Follow</option>
+          <option value="Persuasion / Outreach">Persuasion / Outreach</option>
+          <option value="Paid / Sponsored">Paid / Sponsored</option>
+          <option value="Directory / Profile">Directory / Profile</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Status</label>
+        <select id="pmodal-status" class="form-control">
+          <option value="Live">Live</option>
+          <option value="Indexed">Indexed</option>
+          <option value="Outreach Sent">Outreach Sent</option>
+          <option value="Pending">Pending</option>
+          <option value="Lost">Lost</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Est. DA Score (0 - 100)</label>
+        <input type="number" id="pmodal-da" class="form-control" placeholder="45" min="0" max="100">
+      </div>
+
+      <div class="form-group">
+        <label>Notes</label>
+        <textarea id="pmodal-notes" class="form-control" placeholder="Added via directory submission..."></textarea>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
+        <button class="btn btn-secondary" onclick="document.getElementById('personal-modal').classList.remove('active')">Cancel</button>
+        <button class="btn btn-primary" id="save-personal-link-btn">Save Link</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Auth Modal -->
   <div class="modal-overlay" id="auth-modal">
     <div class="modal" style="width: 440px;">
@@ -297,7 +579,7 @@
       <form id="login-form">
         <div class="form-group">
           <label>Email Address</label>
-          <input type="email" id="login-email" class="form-control" placeholder="admin@vault.com" required>
+          <input type="email" id="login-email" class="form-control" placeholder="ryn.ahmed101@gmail.com" required>
         </div>
         <div class="form-group">
           <label>Password</label>
@@ -310,7 +592,7 @@
       <form id="register-form" style="display: none;">
         <div class="form-group">
           <label>Full Name</label>
-          <input type="text" id="reg-name" class="form-control" placeholder="John Doe">
+          <input type="text" id="reg-name" class="form-control" placeholder="Ryan Ahmed">
         </div>
         <div class="form-group">
           <label>Email Address</label>
@@ -327,6 +609,12 @@
         <button class="btn btn-secondary" onclick="document.getElementById('auth-modal').classList.remove('active')" style="padding: 6px 16px; font-size: 12px;">Close</button>
       </div>
     </div>
+  </div>
+
+  <!-- Cookie Consent Banner -->
+  <div id="cookie-banner" class="cookie-banner" style="display: none;">
+    <p id="cookie-banner-text">We use cookies to maintain session security, manage backlink audit state, and enhance user experience.</p>
+    <button class="btn btn-primary" onclick="acceptCookies()" style="padding: 6px 18px; font-size: 12px;">Accept Cookies</button>
   </div>
 
   <script src="app.js"></script>

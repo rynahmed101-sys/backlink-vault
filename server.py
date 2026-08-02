@@ -62,6 +62,17 @@ def hash_password(password, salt=None):
     hashed = hashlib.sha256((password + salt + SECRET_KEY).encode('utf-8')).hexdigest()
     return hashed, salt
 
+def determine_acquisition_type(title, description, url, html_content=""):
+    text = f"{title} {description} {url} {html_content[:5000]}".lower()
+    if any(k in text for k in ["sponsored", "paid post", "pricing", "buy backlink", "advertisement", "ad rates", "paypal", "stripe"]):
+        return "Paid / Sponsored"
+    elif any(k in text for k in ["directory", "submit url", "add listing", "web directory", "business directory"]):
+        return "Directory / Profile"
+    elif any(k in text for k in ["guest post", "write for us", "contribute", "editorial guidelines", "pitch article"]):
+        return "Persuasion / Outreach"
+    else:
+        return "Easy Do-Follow"
+
 # Database Initialization & High-Performance Indexing
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -108,6 +119,7 @@ def init_db():
             risk_score INTEGER DEFAULT 0,
             user_id INTEGER DEFAULT 1,
             rejection_note TEXT DEFAULT '',
+            acquisition_type TEXT DEFAULT 'Easy Do-Follow',
             last_checked TEXT DEFAULT '',
             created_at TEXT DEFAULT '',
             notes TEXT DEFAULT ''
@@ -124,6 +136,9 @@ def init_db():
     except sqlite3.OperationalError: pass
 
     try: cursor.execute("ALTER TABLE backlinks ADD COLUMN rejection_note TEXT DEFAULT ''")
+    except sqlite3.OperationalError: pass
+
+    try: cursor.execute("ALTER TABLE backlinks ADD COLUMN acquisition_type TEXT DEFAULT 'Easy Do-Follow'")
     except sqlite3.OperationalError: pass
 
     cursor.execute('''
@@ -143,10 +158,73 @@ def init_db():
         )
     ''')
 
+    # CMS Tables
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS cms_pages (
+            slug TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            content_html TEXT NOT NULL,
+            updated_at TEXT
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS cms_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    ''')
+
+    # Personal Backlinks Tracker Table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS personal_backlinks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            project_name TEXT DEFAULT 'General',
+            backlink_url TEXT NOT NULL,
+            target_url TEXT DEFAULT '',
+            anchor_text TEXT DEFAULT '',
+            acquisition_type TEXT DEFAULT 'Easy Do-Follow',
+            status TEXT DEFAULT 'Live',
+            da_score INTEGER DEFAULT 0,
+            notes TEXT DEFAULT '',
+            created_at TEXT DEFAULT '',
+            updated_at TEXT DEFAULT ''
+        )
+    ''')
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_personal_user ON personal_backlinks(user_id)")
+
     cursor.execute("INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('delay', ?)", (str(DEFAULT_BOT_DELAY),))
     cursor.execute("INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('status', 'running')")
 
-    cursor.execute("SELECT id FROM users WHERE email = ?", (ADMIN_EMAIL,))
+    DEFAULT_CMS_PAGES = [
+        ("about-us", "About Us", "<h2>About Backlink Vault</h2><p>Backlink Vault is an enterprise-grade intelligent link auditor and repository designed to help website owners, SEO professionals, and digital marketers discover, analyze, and manage high-authority backlinks.</p><p>Our automated inspection bot verifies response codes, rel attributes (DoFollow / NoFollow / UGC / Sponsored), Domain Authority estimations, and risk factors in real time.</p>"),
+        ("company-details", "Company Details", "<h2>Company Overview</h2><p><strong>Backlink Vault Systems Inc.</strong></p><p>Empowering digital growth with authoritative backlink intelligence, domain quality metrics, and automated link indexing.</p><ul><li><strong>Email:</strong> support@backlink-vault.com</li><li><strong>Office:</strong> San Francisco, CA / Remote</li><li><strong>Version:</strong> 2.5 Enterprise Edition</li></ul>"),
+        ("privacy-policy", "Privacy Policy", "<h2>Privacy Policy</h2><p>Your privacy is important to us. Backlink Vault collects minimal user information strictly necessary for account authentication and backlink project management.</p><p>We use session cookies and authentication tokens to keep your account secure. We do not sell or share user data with third parties.</p>"),
+        ("terms", "Terms of Service", "<h2>Terms of Service</h2><p>By using Backlink Vault, you agree to submit valid web domain URLs for analysis and audit. Spamming, unauthorized scraping, or abusive automated submissions are strictly prohibited.</p>"),
+        ("backlink-guide", "Backlink Strategy Guide", "<h2>How to Use Backlinks Effectively</h2><p>Backlinks remain one of the top search engine ranking factors. Here is how to make the most of Backlink Vault:</p><ol><li><strong>DoFollow Links:</strong> Pass link equity and Domain Authority to your target landing pages.</li><li><strong>Acquisition Categories:</strong><ul><li><strong>Easy Do-Follow:</strong> High-value open sites, profile links, and instant approval portals.</li><li><strong>Persuasion / Outreach:</strong> Require contacting site editors for guest posts or article features.</li><li><strong>Paid / Sponsored:</strong> Editorial placements or directory features requiring sponsorship.</li><li><strong>Directory / Profile:</strong> Structured web directories and company profiles.</li></ul></li><li><strong>Domain Authority (DA):</strong> Higher DA sites (40+) transmit stronger ranking signals to search engines.</li></ol>")
+    ]
+
+    for slug, title, content in DEFAULT_CMS_PAGES:
+        cursor.execute("INSERT OR IGNORE INTO cms_pages (slug, title, content_html, updated_at) VALUES (?, ?, ?, ?)",
+                       (slug, title, content, datetime.now().strftime("%Y-%m-%d %H:%M")))
+
+    DEFAULT_SETTINGS = [
+        ("ga_tracking_id", ""),
+        ("gtm_id", ""),
+        ("cookie_notice_enabled", "1"),
+        ("cookie_notice_text", "We use essential cookies to maintain your session and secure login state."),
+        ("ad_header_html", "<div style='padding:12px; background:rgba(34,211,238,0.08); border:1px dashed var(--accent-cyan); border-radius:8px; text-align:center; font-size:12px; color:var(--accent-cyan);'><strong>Header Ad Banner Placeholder</strong> - Configure custom ad code in Admin CMS</div>"),
+        ("ad_sidebar_html", "<div style='padding:14px; background:rgba(168,85,247,0.08); border:1px dashed var(--accent-purple); border-radius:8px; text-align:center; font-size:12px; color:var(--accent-purple); margin-top:16px;'><strong>Sidebar Sponsored Slot</strong> - Managed via Admin CMS</div>"),
+        ("ad_content_html", "<div style='padding:14px; background:rgba(16,185,129,0.08); border:1px dashed var(--accent-emerald); border-radius:8px; text-align:center; font-size:12px; color:var(--accent-emerald); margin:16px 0;'><strong>In-Content Ad Banner</strong> - Personal / Affiliate Ad Space</div>"),
+        ("ad_footer_html", "<div style='padding:10px; background:rgba(255,255,255,0.03); border:1px dashed var(--border-color); border-radius:6px; text-align:center; font-size:11px; color:var(--text-dim); margin-top:20px;'><strong>Footer Partner Link / Ad</strong></div>"),
+        ("ads_enabled", "1")
+    ]
+
+    for k, v in DEFAULT_SETTINGS:
+        cursor.execute("INSERT OR IGNORE INTO cms_settings (key, value) VALUES (?, ?)", (k, v))
+
+    cursor.execute("SELECT id FROM users WHERE LOWER(email) = ?", (ADMIN_EMAIL.lower(),))
     if not cursor.fetchone():
         admin_pass_hash, admin_salt = hash_password(ADMIN_PASSWORD)
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -154,6 +232,8 @@ def init_db():
             INSERT INTO users (email, password_hash, salt, name, auth_provider, role, created_at)
             VALUES (?, ?, ?, 'Vault Super Admin', 'local', 'admin', ?)
         ''', (ADMIN_EMAIL, admin_pass_hash, admin_salt, now_str))
+    else:
+        cursor.execute("UPDATE users SET role = 'admin' WHERE LOWER(email) = ?", (ADMIN_EMAIL.lower(),))
 
     conn.commit()
     conn.close()
@@ -456,11 +536,70 @@ class RequestHandler(BaseHTTPRequestHandler):
                 conn.close()
                 return
 
+            elif path == "/api/config":
+                self._set_headers(200)
+                self.wfile.write(json.dumps({
+                    "google_client_id": os.environ.get("GOOGLE_CLIENT_ID", "").strip(),
+                    "admin_email": ADMIN_EMAIL
+                }).encode('utf-8'))
+                conn.close()
+                return
+
+            elif path == "/api/cms/pages":
+                slug = query.get("slug", [""])[0]
+                if slug:
+                    cursor.execute("SELECT * FROM cms_pages WHERE slug = ?", (slug,))
+                    row = cursor.fetchone()
+                    res = dict(row) if row else {"error": "Page not found"}
+                else:
+                    cursor.execute("SELECT slug, title, updated_at FROM cms_pages ORDER BY title ASC")
+                    rows = cursor.fetchall()
+                    res = [dict(r) for r in rows]
+
+                self._set_headers(200 if "error" not in res else 404)
+                self.wfile.write(json.dumps(res).encode('utf-8'))
+                conn.close()
+                return
+
+            elif path == "/api/cms/settings":
+                cursor.execute("SELECT key, value FROM cms_settings")
+                rows = cursor.fetchall()
+                settings = {r['key']: r['value'] for r in rows}
+
+                self._set_headers(200)
+                self.wfile.write(json.dumps(settings).encode('utf-8'))
+                conn.close()
+                return
+
+            elif path == "/api/personal-backlinks":
+                if not current_user:
+                    self._set_headers(401)
+                    self.wfile.write(json.dumps({"error": "Login required"}).encode('utf-8'))
+                    conn.close()
+                    return
+
+                project = query.get("project", [""])[0]
+                sql = "SELECT * FROM personal_backlinks WHERE user_id = ?"
+                params = [current_user['id']]
+                if project:
+                    sql += " AND project_name = ?"
+                    params.append(project)
+
+                sql += " ORDER BY id DESC"
+                cursor.execute(sql, params)
+                rows = cursor.fetchall()
+
+                self._set_headers(200)
+                self.wfile.write(json.dumps([dict(r) for r in rows]).encode('utf-8'))
+                conn.close()
+                return
+
             elif path == "/api/backlinks":
                 search = query.get("search", [""])[0].lower()
                 niche_filter = query.get("niche", ["All"])[0]
                 status_filter = query.get("status", ["All"])[0]
                 rel_filter = query.get("rel", ["All"])[0]
+                acq_filter = query.get("acq", ["All"])[0]
                 mine_only = query.get("mine", ["0"])[0] == "1"
                 limit = int(query.get("limit", [100])[0])
                 offset = int(query.get("offset", [0])[0])
@@ -469,11 +608,16 @@ class RequestHandler(BaseHTTPRequestHandler):
                 params = []
 
                 if current_user:
-                    if current_user['role'] != 'admin' or mine_only:
+                    if current_user['role'] == 'admin' and not mine_only:
+                        pass
+                    else:
                         sql += " AND (b.user_id = ? OR b.status IN ('Active', 'Broken', 'Approved', 'Auditing'))"
                         params.append(current_user['id'])
                 else:
-                    sql += " AND b.status IN ('Active', 'Broken', 'Approved', 'Auditing')"
+                    if status_filter == 'Pending Approval':
+                        pass
+                    else:
+                        sql += " AND b.status IN ('Active', 'Broken', 'Approved', 'Auditing')"
 
                 if search:
                     sql += " AND (b.url LIKE ? OR b.site_title LIKE ? OR b.target_url LIKE ? OR b.anchor_text LIKE ?)"
@@ -488,8 +632,15 @@ class RequestHandler(BaseHTTPRequestHandler):
                     params.append(status_filter)
 
                 if rel_filter != "All":
-                    sql += " AND b.rel_type = ?"
-                    params.append(rel_filter)
+                    if rel_filter == "DoFollow":
+                        sql += " AND (b.rel_type = 'DoFollow' OR b.rel_type = 'Domain Indexed')"
+                    else:
+                        sql += " AND b.rel_type = ?"
+                        params.append(rel_filter)
+
+                if acq_filter != "All":
+                    sql += " AND b.acquisition_type = ?"
+                    params.append(acq_filter)
 
                 sql += f" ORDER BY b.id DESC LIMIT {limit} OFFSET {offset}"
                 cursor.execute(sql, params)
@@ -717,6 +868,9 @@ class RequestHandler(BaseHTTPRequestHandler):
                     conn.close()
                     return
 
+                is_admin_email = (email.lower() == ADMIN_EMAIL.lower())
+                assigned_role = 'admin' if is_admin_email else 'user'
+
                 cursor.execute("SELECT * FROM users WHERE email = ?", (email,))
                 user = cursor.fetchone()
 
@@ -724,15 +878,20 @@ class RequestHandler(BaseHTTPRequestHandler):
                 if not user:
                     cursor.execute('''
                         INSERT INTO users (email, name, auth_provider, role, avatar_url, created_at)
-                        VALUES (?, ?, 'google', 'user', ?, ?)
-                    ''', (email, name, avatar, now_str))
+                        VALUES (?, ?, 'google', ?, ?, ?)
+                    ''', (email, name, assigned_role, avatar, now_str))
                     conn.commit()
                     user_id = cursor.lastrowid
-                    user_role = 'user'
+                    user_role = assigned_role
                 else:
                     user_dict = dict(user)
                     user_id = user_dict['id']
-                    user_role = user_dict['role']
+                    if is_admin_email and user_dict['role'] != 'admin':
+                        cursor.execute("UPDATE users SET role = 'admin' WHERE id = ?", (user_id,))
+                        conn.commit()
+                        user_role = 'admin'
+                    else:
+                        user_role = user_dict['role']
 
                 token = secrets.token_hex(32)
                 exp = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d %H:%M")
@@ -903,6 +1062,98 @@ class RequestHandler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"success": True}).encode('utf-8'))
                 return
 
+            elif path == "/api/cms/pages":
+                if not current_user or current_user['role'] != 'admin':
+                    self._set_headers(403)
+                    self.wfile.write(json.dumps({"error": "Admin access required"}).encode('utf-8'))
+                    conn.close()
+                    return
+
+                slug = data.get("slug", "").strip().lower()
+                title = data.get("title", "").strip()
+                content_html = data.get("content_html", "").strip()
+                now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+                if not slug or not title:
+                    self._set_headers(400)
+                    self.wfile.write(json.dumps({"error": "Slug and title required"}).encode('utf-8'))
+                    conn.close()
+                    return
+
+                cursor.execute('''
+                    INSERT INTO cms_pages (slug, title, content_html, updated_at)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(slug) DO UPDATE SET title=excluded.title, content_html=excluded.content_html, updated_at=excluded.updated_at
+                ''', (slug, title, content_html, now_str))
+                conn.commit()
+
+                self._set_headers(200)
+                self.wfile.write(json.dumps({"success": True, "slug": slug}).encode('utf-8'))
+                conn.close()
+                return
+
+            elif path == "/api/cms/settings":
+                if not current_user or current_user['role'] != 'admin':
+                    self._set_headers(403)
+                    self.wfile.write(json.dumps({"error": "Admin access required"}).encode('utf-8'))
+                    conn.close()
+                    return
+
+                for key, val in data.items():
+                    cursor.execute('''
+                        INSERT INTO cms_settings (key, value) VALUES (?, ?)
+                        ON CONFLICT(key) DO UPDATE SET value=excluded.value
+                    ''', (str(key), str(val)))
+
+                conn.commit()
+                self._set_headers(200)
+                self.wfile.write(json.dumps({"success": True}).encode('utf-8'))
+                conn.close()
+                return
+
+            elif path == "/api/personal-backlinks":
+                if not current_user:
+                    self._set_headers(401)
+                    self.wfile.write(json.dumps({"error": "Login required"}).encode('utf-8'))
+                    conn.close()
+                    return
+
+                p_id = data.get("id")
+                project_name = data.get("project_name", "General").strip() or "General"
+                backlink_url = data.get("backlink_url", "").strip()
+                target_url = data.get("target_url", "").strip()
+                anchor_text = data.get("anchor_text", "").strip()
+                acq_type = data.get("acquisition_type", "Easy Do-Follow")
+                status = data.get("status", "Live")
+                da_score = int(data.get("da_score", 0))
+                notes = data.get("notes", "").strip()
+                now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+                if not backlink_url:
+                    self._set_headers(400)
+                    self.wfile.write(json.dumps({"error": "Backlink URL is required"}).encode('utf-8'))
+                    conn.close()
+                    return
+
+                if p_id:
+                    cursor.execute('''
+                        UPDATE personal_backlinks SET
+                            project_name=?, backlink_url=?, target_url=?, anchor_text=?,
+                            acquisition_type=?, status=?, da_score=?, notes=?, updated_at=?
+                        WHERE id=? AND user_id=?
+                    ''', (project_name, backlink_url, target_url, anchor_text, acq_type, status, da_score, notes, now_str, p_id, current_user['id']))
+                else:
+                    cursor.execute('''
+                        INSERT INTO personal_backlinks (user_id, project_name, backlink_url, target_url, anchor_text, acquisition_type, status, da_score, notes, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''', (current_user['id'], project_name, backlink_url, target_url, anchor_text, acq_type, status, da_score, notes, now_str, now_str))
+
+                conn.commit()
+                self._set_headers(200)
+                self.wfile.write(json.dumps({"success": True}).encode('utf-8'))
+                conn.close()
+                return
+
             conn.close()
             self._set_headers(404)
             self.wfile.write(json.dumps({"error": "Endpoint not found"}).encode('utf-8'))
@@ -930,6 +1181,23 @@ class RequestHandler(BaseHTTPRequestHandler):
             else:
                 cursor.execute("DELETE FROM backlinks WHERE id = ? AND user_id = ?", (link_id, current_user['id']))
 
+            conn.commit()
+            conn.close()
+
+            self._set_headers(200)
+            self.wfile.write(json.dumps({"success": True}).encode('utf-8'))
+            return
+
+        elif path.startswith("/api/personal-backlinks/"):
+            current_user = get_auth_user(self.headers)
+            if not current_user:
+                self._set_headers(401)
+                return
+
+            link_id = path.split('/')[-1]
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM personal_backlinks WHERE id = ? AND user_id = ?", (link_id, current_user['id']))
             conn.commit()
             conn.close()
 
