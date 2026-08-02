@@ -11,8 +11,12 @@ import threading
 import csv
 import secrets
 import hashlib
+import socket
 from datetime import datetime, timedelta
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
+
+# Global socket timeout to prevent any HTTP request/bot fetch from hanging sockets
+socket.setdefaulttimeout(10.0)
 
 # Set up paths & Environment Configuration
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -78,7 +82,10 @@ def hash_password(password, salt=None):
 def init_db():
     conn = sqlite3.connect(DB_PATH, timeout=10)
     cursor = conn.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL;")
+    try:
+        cursor.execute("PRAGMA journal_mode=WAL;")
+    except Exception:
+        pass
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
@@ -1303,6 +1310,19 @@ class RequestHandler(BaseHTTPRequestHandler):
         self._set_headers(200, content_type)
         self.wfile.write(content)
 
+class HeartbeatWorker(threading.Thread):
+    def __init__(self):
+        super().__init__()
+        self.daemon = True
+        self.name = "HeartbeatWorker"
+
+    def run(self):
+        uptime = 0
+        while True:
+            time.sleep(5)
+            uptime += 5
+            print(f"[ALIVE] {datetime.now().strftime('%H:%M:%S')} (Uptime: {uptime}s)", flush=True)
+
 def run_server(port=None):
     import traceback
 
@@ -1326,10 +1346,19 @@ def run_server(port=None):
         traceback.print_exc()
         sys.exit(1)
 
+    # --- Start Heartbeat Worker ---
+    try:
+        hb = HeartbeatWorker()
+        hb.start()
+        print("[STARTUP] Heartbeat thread started (5s ping)", flush=True)
+    except Exception as e:
+        print(f"[WARN] Heartbeat thread failed: {e}", flush=True)
+
     # --- Start Bot Worker ---
     try:
         print("[STARTUP] Starting BotWorker thread...", flush=True)
         worker = BotWorker()
+        worker.daemon = True
         worker.start()
         print("[STARTUP] BotWorker started", flush=True)
     except Exception as e:
@@ -1337,20 +1366,19 @@ def run_server(port=None):
         traceback.print_exc()
         sys.exit(1)
 
-    # --- Start HTTP Server ---
+    # --- Start Threading HTTP Server ---
     try:
-        # 0.0.0.0 is required for Railway — '' or 'localhost' only accepts local connections
         server_address = ('0.0.0.0', port)
-        httpd = HTTPServer(server_address, RequestHandler)
-        print(f"[STARTUP] Backlink Vault listening on http://0.0.0.0:{port}", flush=True)
+        httpd = ThreadingHTTPServer(server_address, RequestHandler)
+        print(f"[STARTUP] Threading Backlink Vault listening on http://0.0.0.0:{port}", flush=True)
         print(f"[STARTUP] Health check: http://0.0.0.0:{port}/health", flush=True)
         httpd.serve_forever()
     except KeyboardInterrupt:
         print("\n[SHUTDOWN] Keyboard interrupt — shutting down.", flush=True)
         httpd.server_close()
     except Exception as e:
-        print(f"[FATAL] HTTPServer crashed: {e}", flush=True)
-        traceback.print_exc()
+        print(f"[FATAL] serve_forever() crashed: {e}", file=sys.stderr, flush=True)
+        traceback.print_exc(file=sys.stderr)
         sys.exit(1)
 
 if __name__ == "__main__":
