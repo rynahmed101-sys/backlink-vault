@@ -215,22 +215,46 @@ function initAuth() {
 }
 
 function initGoogleSignIn() {
-  // GSI library may not be ready yet – poll until available
+  const customBtn = document.getElementById('custom-google-btn');
+  if (customBtn) {
+    customBtn.onclick = () => {
+      const effectiveClientId = googleClientId || '1088831685341-CcijrCfZBuqDzBWp3qSrBEZCqBUfQVz4CWGHWF91iaEw.apps.googleusercontent.com';
+      if (typeof google !== 'undefined' && google.accounts && google.accounts.id) {
+        google.accounts.id.initialize({
+          client_id: effectiveClientId,
+          callback: handleGoogleSignIn
+        });
+        google.accounts.id.prompt();
+      } else {
+        alert('Google Sign-In is initializing. Please try clicking again in a moment.');
+      }
+    };
+  }
+
   function tryInit(attempts) {
-    if (typeof google !== 'undefined' && google.accounts && googleClientId) {
-      google.accounts.id.initialize({
-        client_id: googleClientId,
-        callback: handleGoogleSignIn
-      });
-      google.accounts.id.renderButton(
-        document.getElementById('google-signin-btn'),
-        { theme: 'outline', size: 'large', text: 'continue_with', width: 320 }
-      );
+    const effectiveClientId = googleClientId || '1088831685341-CcijrCfZBuqDzBWp3qSrBEZCqBUfQVz4CWGHWF91iaEw.apps.googleusercontent.com';
+    if (typeof google !== 'undefined' && google.accounts && google.accounts.id && effectiveClientId) {
+      try {
+        google.accounts.id.initialize({
+          client_id: effectiveClientId,
+          callback: handleGoogleSignIn,
+          auto_select: false
+        });
+        const container = document.getElementById('google-signin-btn');
+        if (container) {
+          google.accounts.id.renderButton(
+            container,
+            { theme: 'outline', size: 'large', text: 'continue_with', width: 340 }
+          );
+        }
+      } catch (err) {
+        console.warn('GSI render error:', err);
+      }
     } else if (attempts > 0) {
-      setTimeout(() => tryInit(attempts - 1), 600);
+      setTimeout(() => tryInit(attempts - 1), 500);
     }
   }
-  tryInit(15);  // Try up to 15 times (9 seconds total)
+  tryInit(20);
 }
 
 async function handleGoogleSignIn(response) {
@@ -513,7 +537,13 @@ async function fetchStats() {
     set('stat-active',   (data.active || 0).toLocaleString());
     set('stat-avg-da',    data.avg_da   || 0);
     set('stat-avg-val',   data.avg_value || 0);
-    set('stat-pending-sub', `${data.pending_approval || 0} Pending Admin Approval`);
+
+    const pendingSub = document.getElementById('stat-pending-sub');
+    if (pendingSub) {
+      const queueCount = (data.bot_queue || 0).toLocaleString();
+      const pendCount = (data.pending_approval || 0).toLocaleString();
+      pendingSub.innerText = `${queueCount} Bot Queue • ${pendCount} Pending Approval`;
+    }
 
     renderNichePills(data.niche_distribution || {});
   } catch (err) {

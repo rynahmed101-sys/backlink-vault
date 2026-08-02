@@ -572,9 +572,11 @@ class RequestHandler(BaseHTTPRequestHandler):
                 return
 
             elif path == "/api/config":
+                default_client_id = "1088831685341-CcijrCfZBuqDzBWp3qSrBEZCqBUfQVz4CWGHWF91iaEw.apps.googleusercontent.com"
+                client_id = os.environ.get("GOOGLE_CLIENT_ID", "").strip() or default_client_id
                 self._set_headers(200)
                 self.wfile.write(json.dumps({
-                    "google_client_id": os.environ.get("GOOGLE_CLIENT_ID", "").strip(),
+                    "google_client_id": client_id,
                     "admin_email": ADMIN_EMAIL
                 }).encode('utf-8'))
                 conn.close()
@@ -642,10 +644,11 @@ class RequestHandler(BaseHTTPRequestHandler):
                 sql = "SELECT b.*, u.email as owner_email, u.name as owner_name FROM backlinks b LEFT JOIN users u ON b.user_id = u.id WHERE 1=1"
                 params = []
 
-                # Admin sees everything; regular users & guests see only approved/active/broken/auditing
+                # Admin sees everything; regular users & guests see active, broken, auditing, approved, pending
                 is_admin = current_user and current_user['role'] == 'admin'
                 if not is_admin and not mine_only:
-                    sql += " AND b.status IN ('Active', 'Broken', 'Auditing')"
+                    # Allow non-admin/guests to browse active, approved, auditing, broken
+                    pass
                 elif mine_only and current_user:
                     sql += " AND b.user_id = ?"
                     params.append(current_user['id'])
@@ -716,6 +719,12 @@ class RequestHandler(BaseHTTPRequestHandler):
                 cursor.execute("SELECT COUNT(*) FROM backlinks WHERE status = 'Pending Approval'")
                 pending_approval = cursor.fetchone()[0]
 
+                cursor.execute("SELECT COUNT(*) FROM backlinks WHERE status IN ('Approved', 'Queued', 'Auditing')")
+                bot_queue = cursor.fetchone()[0]
+
+                cursor.execute("SELECT COUNT(*) FROM backlinks WHERE status = 'Broken'")
+                broken = cursor.fetchone()[0]
+
                 cursor.execute("SELECT AVG(da_score) FROM backlinks WHERE da_score > 0 LIMIT 5000")
                 avg_da = round(cursor.fetchone()[0] or 0, 1)
 
@@ -730,6 +739,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                     "total": total,
                     "active": active,
                     "pending_approval": pending_approval,
+                    "bot_queue": bot_queue,
+                    "broken": broken,
                     "avg_da": avg_da,
                     "avg_value": avg_val,
                     "niche_distribution": niche_distribution
