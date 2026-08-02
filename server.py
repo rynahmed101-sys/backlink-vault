@@ -1274,25 +1274,56 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
 def run_server(port=None):
+    import traceback
+
     if port is None:
         port = PORT
-    init_db()
 
-    worker = BotWorker()
-    worker.start()
+    print(f"[STARTUP] Python {sys.version}", flush=True)
+    print(f"[STARTUP] BASE_DIR: {BASE_DIR}", flush=True)
+    print(f"[STARTUP] DB_PATH:  {DB_PATH}", flush=True)
+    print(f"[STARTUP] PORT:     {port}", flush=True)
+    print(f"[STARTUP] ADMIN:    {ADMIN_EMAIL}", flush=True)
+    print(f"[STARTUP] GOOGLE:   {'SET' if GOOGLE_CLIENT_ID else 'NOT SET'}", flush=True)
 
-    # Bind to 0.0.0.0 explicitly — required for Railway (and any cloud host)
-    # '' or 'localhost' only accepts local connections; 0.0.0.0 accepts all
-    server_address = ('0.0.0.0', port)
-    httpd = HTTPServer(server_address, RequestHandler)
-    print(f"Backlink Vault Server running on http://0.0.0.0:{port}")
-    print(f"Health check: http://0.0.0.0:{port}/health")
+    # --- Init Database ---
     try:
+        print("[STARTUP] Initialising database...", flush=True)
+        init_db()
+        print("[STARTUP] Database OK", flush=True)
+    except Exception as e:
+        print(f"[FATAL] init_db() failed: {e}", flush=True)
+        traceback.print_exc()
+        sys.exit(1)
+
+    # --- Start Bot Worker ---
+    try:
+        print("[STARTUP] Starting BotWorker thread...", flush=True)
+        worker = BotWorker()
+        worker.start()
+        print("[STARTUP] BotWorker started", flush=True)
+    except Exception as e:
+        print(f"[FATAL] BotWorker failed to start: {e}", flush=True)
+        traceback.print_exc()
+        sys.exit(1)
+
+    # --- Start HTTP Server ---
+    try:
+        # 0.0.0.0 is required for Railway — '' or 'localhost' only accepts local connections
+        server_address = ('0.0.0.0', port)
+        httpd = HTTPServer(server_address, RequestHandler)
+        print(f"[STARTUP] Backlink Vault listening on http://0.0.0.0:{port}", flush=True)
+        print(f"[STARTUP] Health check: http://0.0.0.0:{port}/health", flush=True)
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print("\nShutting down server...")
+        print("\n[SHUTDOWN] Keyboard interrupt — shutting down.", flush=True)
         httpd.server_close()
+    except Exception as e:
+        print(f"[FATAL] HTTPServer crashed: {e}", flush=True)
+        traceback.print_exc()
+        sys.exit(1)
 
 if __name__ == "__main__":
     port_arg = int(sys.argv[1]) if len(sys.argv) > 1 else PORT
     run_server(port_arg)
+
