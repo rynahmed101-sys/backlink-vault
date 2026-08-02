@@ -180,16 +180,19 @@ function initAuth() {
   });
 
   window.onload = function() {
-    if (window.google && google.accounts) {
-      google.accounts.id.initialize({
-        client_id: "1083921820491-example.apps.googleusercontent.com",
-        callback: handleGoogleSignIn
-      });
-      google.accounts.id.renderButton(
-        document.getElementById("google-signin-btn"),
-        { theme: "outline", size: "large", text: "continue_with" }
-      );
-    }
+        fetch('/api/config')
+          .then(res => res.json())
+          .then(config => {
+            google.accounts.id.initialize({
+              client_id: config.google_client_id,
+              callback: handleGoogleSignIn
+            });
+            google.accounts.id.renderButton(
+              document.getElementById("google-signin-btn"),
+              { theme: "outline", size: "large", text: "continue_with" }
+            );
+          })
+          .catch(err => console.error('Failed to load config:', err));
   };
 }
 
@@ -541,8 +544,7 @@ function initModals() {
   const addModal = document.getElementById('add-modal');
   document.getElementById('open-add-modal-btn').addEventListener('click', () => {
     if (!currentUser) {
-      // Show friendly sign‑up prompt instead of raw auth modal
-      alert('Upload your links (do your own copywriting) by signing up.');
+      alert('🔒 Please sign up first – then you’ll be able to submit your links.');
       document.getElementById('auth-modal').classList.add('active');
       return;
     }
@@ -595,8 +597,7 @@ function initFileUpload() {
 
   document.getElementById('submit-bulk-btn').addEventListener('click', async () => {
     if (!currentUser) {
-      // Prompt unauthenticated users to sign up with copywriting message
-      alert('Upload your links (do your own copywriting) by signing up.');
+      alert('Please sign up to upload your links.');
       document.getElementById('auth-modal').classList.add('active');
       return;
     }
@@ -610,8 +611,7 @@ function initFileUpload() {
 
 function handleFile(file) {
   if (!currentUser) {
-    // Prompt unauthenticated users to sign up before file upload
-    alert('Upload your links (do your own copywriting) by signing up.');
+    alert('Please sign up to upload your links.');
     document.getElementById('auth-modal').classList.add('active');
     return;
   }
