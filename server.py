@@ -1281,9 +1281,12 @@ def run_server(port=None):
     worker = BotWorker()
     worker.start()
 
-    server_address = ('', port)
+    # Bind to 0.0.0.0 explicitly — required for Railway (and any cloud host)
+    # '' or 'localhost' only accepts local connections; 0.0.0.0 accepts all
+    server_address = ('0.0.0.0', port)
     httpd = HTTPServer(server_address, RequestHandler)
-    print(f"Backlink Vault Server running on port {port} (Health endpoint: http://localhost:{port}/health)")
+    print(f"Backlink Vault Server running on http://0.0.0.0:{port}")
+    print(f"Health check: http://0.0.0.0:{port}/health")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
