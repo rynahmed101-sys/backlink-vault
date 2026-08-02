@@ -248,33 +248,41 @@ def get_auth_user(headers):
     auth_header = headers.get('Authorization', '')
     token = None
 
-    if auth_header.startswith('Bearer '):
-        token = auth_header.split('Bearer ')[1].strip()
+def get_auth_user(headers):
+    try:
+        auth_header = headers.get('Authorization', '')
+        token = None
 
-    if not token:
-        cookie_header = headers.get('Cookie', '')
-        for c in cookie_header.split(';'):
-            if 'vault_token=' in c:
-                token = c.split('vault_token=')[1].strip()
-                break
+        if auth_header.startswith('Bearer '):
+            token = auth_header.split('Bearer ')[1].strip()
 
-    if not token:
+        if not token:
+            cookie_header = headers.get('Cookie', '')
+            for c in cookie_header.split(';'):
+                if 'vault_token=' in c:
+                    token = c.split('vault_token=')[1].strip()
+                    break
+
+        if not token:
+            return None
+
+        conn = sqlite3.connect(DB_PATH, timeout=10)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        cursor.execute('''
+            SELECT u.id, u.email, u.name, u.role, u.avatar_url
+            FROM sessions s
+            JOIN users u ON s.user_id = u.id
+            WHERE s.token = ?
+        ''', (token,))
+        user = cursor.fetchone()
+        conn.close()
+
+        return dict(user) if user else None
+    except Exception as e:
+        print(f"[AUTH-ERR] {e}", flush=True)
         return None
-
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-
-    cursor.execute('''
-        SELECT u.id, u.email, u.name, u.role, u.avatar_url
-        FROM sessions s
-        JOIN users u ON s.user_id = u.id
-        WHERE s.token = ?
-    ''', (token,))
-    user = cursor.fetchone()
-    conn.close()
-
-    return dict(user) if user else None
 
 def categorize_niche(title, description, url):
     text = (f"{title} {description} {url}").lower()
@@ -557,14 +565,17 @@ class RequestHandler(BaseHTTPRequestHandler):
             print(f"[REQ-ERR] {e}", flush=True)
 
     def _set_headers(self, status=200, content_type="application/json", cookie=None):
-        self.send_response(status)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, HEAD")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-        if cookie:
-            self.send_header("Set-Cookie", cookie)
-        self.end_headers()
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, HEAD")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+            if cookie:
+                self.send_header("Set-Cookie", cookie)
+            self.end_headers()
+        except Exception as e:
+            print(f"[FATAL] _set_headers crashed: {e}", file=sys.stderr, flush=True)
 
     def do_OPTIONS(self):
         self._set_headers(200)
@@ -581,6 +592,13 @@ class RequestHandler(BaseHTTPRequestHandler):
         try:
             parsed = urllib.parse.urlparse(self.path)
             path = parsed.path
+
+            # Railway & Cloud Health Check Endpoint — PRIORITY 1 (No DB, No auth)
+            if path == "/health":
+                self._set_headers(200, "application/json")
+                self.wfile.write(b'{"status":"ok","service":"backlink-vault"}')
+                return
+
             query = urllib.parse.parse_qs(parsed.query)
 
             # Serve static files
@@ -590,16 +608,6 @@ class RequestHandler(BaseHTTPRequestHandler):
                 return self._serve_file(os.path.join(STATIC_DIR, "styles.css"), "text/css")
             elif path == "/app.js":
                 return self._serve_file(os.path.join(STATIC_DIR, "app.js"), "application/javascript")
-
-            # Railway & Cloud Health Check Endpoint
-            elif path == "/health":
-                self._set_headers(200)
-                self.wfile.write(json.dumps({
-                    "status": "ok",
-                    "service": "backlink-vault",
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }).encode('utf-8'))
-                return
 
             # Google OAuth2 redirect callback — serve index.html so JS handles the hash token
             elif path in ["/api/auth/google/callback", "/auth/callback"]:
@@ -859,9 +867,13 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._set_headers(404)
             self.wfile.write(json.dumps({"error": "Endpoint not found"}).encode('utf-8'))
         except Exception as e:
-            print("GET exception:", e)
-            self._set_headers(500)
-            self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+            print(f"[FATAL] do_GET crashed on {self.path}: {e}", file=sys.stderr, flush=True)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            try:
+                self._set_headers(500)
+                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+            except Exception: pass
 
     def do_POST(self):
         try:
@@ -1258,66 +1270,78 @@ class RequestHandler(BaseHTTPRequestHandler):
             self._set_headers(404)
             self.wfile.write(json.dumps({"error": "Endpoint not found"}).encode('utf-8'))
         except Exception as e:
-            print("POST exception:", e)
-            self._set_headers(500)
-            self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+            print(f"[FATAL] do_POST crashed on {self.path}: {e}", file=sys.stderr, flush=True)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
+            try:
+                self._set_headers(500)
+                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+            except Exception: pass
 
     def do_DELETE(self):
-        parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path
+        try:
+            parsed = urllib.parse.urlparse(self.path)
+            path = parsed.path
 
-        if path.startswith("/api/backlinks/"):
-            current_user = get_auth_user(self.headers)
-            if not current_user:
-                self._set_headers(401)
+            if path.startswith("/api/backlinks/"):
+                current_user = get_auth_user(self.headers)
+                if not current_user:
+                    self._set_headers(401)
+                    return
+
+                link_id = path.split('/')[-1]
+                conn = sqlite3.connect(DB_PATH, timeout=10)
+                cursor = conn.cursor()
+
+                if current_user['role'] == 'admin':
+                    cursor.execute("DELETE FROM backlinks WHERE id = ?", (link_id,))
+                else:
+                    cursor.execute("DELETE FROM backlinks WHERE id = ? AND user_id = ?", (link_id, current_user['id']))
+
+                conn.commit()
+                conn.close()
+
+                self._set_headers(200)
+                self.wfile.write(json.dumps({"success": True}).encode('utf-8'))
                 return
 
-            link_id = path.split('/')[-1]
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
+            elif path.startswith("/api/personal-backlinks/"):
+                current_user = get_auth_user(self.headers)
+                if not current_user:
+                    self._set_headers(401)
+                    return
 
-            if current_user['role'] == 'admin':
-                cursor.execute("DELETE FROM backlinks WHERE id = ?", (link_id,))
-            else:
-                cursor.execute("DELETE FROM backlinks WHERE id = ? AND user_id = ?", (link_id, current_user['id']))
+                link_id = path.split('/')[-1]
+                conn = sqlite3.connect(DB_PATH, timeout=10)
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM personal_backlinks WHERE id = ? AND user_id = ?", (link_id, current_user['id']))
+                conn.commit()
+                conn.close()
 
-            conn.commit()
-            conn.close()
-
-            self._set_headers(200)
-            self.wfile.write(json.dumps({"success": True}).encode('utf-8'))
-            return
-
-        elif path.startswith("/api/personal-backlinks/"):
-            current_user = get_auth_user(self.headers)
-            if not current_user:
-                self._set_headers(401)
+                self._set_headers(200)
+                self.wfile.write(json.dumps({"success": True}).encode('utf-8'))
                 return
 
-            link_id = path.split('/')[-1]
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM personal_backlinks WHERE id = ? AND user_id = ?", (link_id, current_user['id']))
-            conn.commit()
-            conn.close()
-
-            self._set_headers(200)
-            self.wfile.write(json.dumps({"success": True}).encode('utf-8'))
-            return
-
-        self._set_headers(404)
+            self._set_headers(404)
+        except Exception as e:
+            print(f"[FATAL] do_DELETE crashed: {e}", file=sys.stderr, flush=True)
+            import traceback
+            traceback.print_exc(file=sys.stderr)
 
     def _serve_file(self, file_path, content_type):
-        if not os.path.exists(file_path):
-            self._set_headers(404)
-            self.wfile.write(b"File not found")
-            return
+        try:
+            if not os.path.exists(file_path):
+                self._set_headers(404)
+                self.wfile.write(b"File not found")
+                return
 
-        with open(file_path, "rb") as f:
-            content = f.read()
+            with open(file_path, "rb") as f:
+                content = f.read()
 
-        self._set_headers(200, content_type)
-        self.wfile.write(content)
+            self._set_headers(200, content_type)
+            self.wfile.write(content)
+        except Exception as e:
+            print(f"[FATAL] _serve_file failed for {file_path}: {e}", file=sys.stderr, flush=True)
 
 class HeartbeatWorker(threading.Thread):
     def __init__(self):
