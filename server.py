@@ -74,21 +74,11 @@ def hash_password(password, salt=None):
     hashed = hashlib.sha256((password + salt + SECRET_KEY).encode('utf-8')).hexdigest()
     return hashed, salt
 
-def determine_acquisition_type(title, description, url, html_content=""):
-    text = f"{title} {description} {url} {html_content[:5000]}".lower()
-    if any(k in text for k in ["sponsored", "paid post", "pricing", "buy backlink", "advertisement", "ad rates", "paypal", "stripe"]):
-        return "Paid / Sponsored"
-    elif any(k in text for k in ["directory", "submit url", "add listing", "web directory", "business directory"]):
-        return "Directory / Profile"
-    elif any(k in text for k in ["guest post", "write for us", "contribute", "editorial guidelines", "pitch article"]):
-        return "Persuasion / Outreach"
-    else:
-        return "Easy Do-Follow"
-
 # Database Initialization & High-Performance Indexing
 def init_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     cursor = conn.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL;")
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
