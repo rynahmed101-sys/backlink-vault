@@ -19,6 +19,16 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "vault.db")
 STATIC_DIR = BASE_DIR
 
+# Load .env file into os.environ
+env_path = os.path.join(BASE_DIR, ".env")
+if os.path.exists(env_path):
+    with open(env_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                os.environ[k.strip()] = v.strip()
+
 PORT = int(os.environ.get("PORT", 8000))
 SECRET_KEY = os.environ.get("SECRET_KEY", "vault_default_secret_key_2026")
 ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@vault.com").strip().lower()
@@ -364,6 +374,29 @@ def calculate_metrics(url, http_code, elapsed_ms, html_content, target_url):
     risk_score = min(100, risk_score)
     return da, value_score, rel_type, risk_score
 
+def determine_acquisition_type(title, description, url, html_content=''):
+    """Classify backlink acquisition difficulty based on site signals."""
+    text = (f"{title} {description} {url}").lower()
+    html_lower = (html_content or '').lower()
+    
+    # Paid / Sponsored signals
+    paid_keywords = ['sponsored', 'advertis', 'paid placement', 'partner', 'native ad', 'promo']
+    if any(kw in text for kw in paid_keywords) or any(kw in html_lower for kw in paid_keywords):
+        return 'Paid / Sponsored'
+    
+    # Outreach / Guest Post signals
+    outreach_keywords = ['write for us', 'guest post', 'contribute', 'submit article', 'editorial', 'pitch us']
+    if any(kw in html_lower for kw in outreach_keywords):
+        return 'Persuasion / Outreach'
+    
+    # Directory / Profile signals
+    directory_keywords = ['directory', 'listing', 'profile', 'register', 'free listing', 'add your business', 'catalog']
+    if any(kw in text for kw in directory_keywords) or any(kw in html_lower for kw in directory_keywords):
+        return 'Directory / Profile'
+    
+    # Default to Easy Do-Follow (open sites, blogs, communities)
+    return 'Easy Do-Follow'
+
 # Bot Inspector Worker Thread
 class BotWorker(threading.Thread):
     def __init__(self):
@@ -459,15 +492,17 @@ class BotWorker(threading.Thread):
                 final_status = "Active" if http_code in [200, 301, 302] else "Broken"
                 now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
+                acq_type = determine_acquisition_type(site_title, site_desc, url, html_text)
+
                 conn = sqlite3.connect(DB_PATH)
                 cursor = conn.cursor()
                 cursor.execute('''
                     UPDATE backlinks SET
                         niche = ?, da_score = ?, value_score = ?, status = ?,
                         http_code = ?, rel_type = ?, site_title = ?, site_description = ?,
-                        response_time_ms = ?, risk_score = ?, last_checked = ?
+                        response_time_ms = ?, risk_score = ?, last_checked = ?, acquisition_type = ?
                     WHERE id = ?
-                ''', (niche, da, val_score, final_status, http_code, rel_type, site_title or url, site_desc, elapsed_ms, risk_score, now_str, link_id))
+                ''', (niche, da, val_score, final_status, http_code, rel_type, site_title or url, site_desc, elapsed_ms, risk_score, now_str, acq_type, link_id))
                 conn.commit()
                 conn.close()
 
@@ -607,17 +642,13 @@ class RequestHandler(BaseHTTPRequestHandler):
                 sql = "SELECT b.*, u.email as owner_email, u.name as owner_name FROM backlinks b LEFT JOIN users u ON b.user_id = u.id WHERE 1=1"
                 params = []
 
-                if current_user:
-                    if current_user['role'] == 'admin' and not mine_only:
-                        pass
-                    else:
-                        sql += " AND (b.user_id = ? OR b.status IN ('Active', 'Broken', 'Approved', 'Auditing'))"
-                        params.append(current_user['id'])
-                else:
-                    if status_filter == 'Pending Approval':
-                        pass
-                    else:
-                        sql += " AND b.status IN ('Active', 'Broken', 'Approved', 'Auditing')"
+                # Admin sees everything; regular users & guests see only approved/active/broken/auditing
+                is_admin = current_user and current_user['role'] == 'admin'
+                if not is_admin and not mine_only:
+                    sql += " AND b.status IN ('Active', 'Broken', 'Auditing')"
+                elif mine_only and current_user:
+                    sql += " AND b.user_id = ?"
+                    params.append(current_user['id'])
 
                 if search:
                     sql += " AND (b.url LIKE ? OR b.site_title LIKE ? OR b.target_url LIKE ? OR b.anchor_text LIKE ?)"
