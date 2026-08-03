@@ -307,6 +307,7 @@ function initNavigation() {
       if (tab === 'pages') loadCMSPage(currentCMSPage);
       if (tab === 'cms' && currentUser?.role === 'admin') loadCMSEditorPage(document.getElementById('cms-editor-slug').value);
       if (tab === 'bot') fetchBotStatus();
+      if (tab === 'users' && currentUser?.role === 'admin') fetchAdminUsers();
     });
   });
 }
@@ -1204,3 +1205,77 @@ document.getElementById('save-edit-btn')?.addEventListener('click', async () => 
   }
 });
 
+
+// -----------------------------------------------
+// USER MANAGEMENT TAB (Admin Only)
+// -----------------------------------------------
+let allUsers = [];
+
+async function fetchAdminUsers() {
+  try {
+    const res = await fetch('/api/admin/users', { headers: getHeaders() });
+    if (!res.ok) return;
+    allUsers = await res.json();
+    renderUsersTable(allUsers);
+  } catch(e) { console.error('fetchAdminUsers:', e); }
+}
+
+function renderUsersTable(users) {
+  const tbody = document.getElementById('users-table-body');
+  if (!tbody) return;
+
+  // Update stats
+  const totalLinks = users.reduce((s, u) => s + (u.backlinks_submitted || 0), 0);
+  const el = (id, v) => { const e = document.getElementById(id); if (e) e.innerText = v; };
+  el('ustat-total', users.length);
+  el('ustat-links', totalLinks);
+  el('ustat-newest', users.length ? (users[0].email || '�') : '�');
+
+  if (!users.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted);">No users registered yet.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = '';
+  users.forEach((u, i) => {
+    const tr = document.createElement('tr');
+    const joined = u.created_at ? new Date(u.created_at).toLocaleDateString() : '�';
+    const roleBadge = u.role === 'admin'
+      ? `<span class="badge badge-acq-paid" style="font-size:11px;">Admin</span>`
+      : `<span class="badge" style="font-size:11px;background:rgba(16,185,129,.12);color:#10b981;border:1px solid rgba(16,185,129,.3);">Member</span>`;
+
+    tr.innerHTML = `
+      <td style="color:var(--text-dim);font-size:12px;">${i + 1}</td>
+      <td style="font-weight:500;">${escapeHtml(u.name || '�')}</td>
+      <td style="font-size:13px;color:var(--accent-cyan);">${escapeHtml(u.email)}</td>
+      <td>${roleBadge}</td>
+      <td style="font-weight:600;">${u.backlinks_submitted || 0}</td>
+      <td style="font-size:12px;color:var(--text-muted);">${joined}</td>
+      <td>
+        ${u.role !== 'admin' ? `<button class="btn btn-secondary" onclick="deleteUser(${u.id},'${escapeHtml(u.email)}')" style="padding:4px 10px;font-size:11px;color:var(--accent-rose);">?? Delete</button>` : '<span style="color:var(--text-dim);font-size:11px;">Protected</span>'}
+      </td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+window.deleteUser = async function(id, email) {
+  if (!confirm(`Delete user "${email}"? This will also remove all their sessions.`)) return;
+  const res = await fetch(`/api/admin/users/${id}/delete`, { method: 'POST', headers: getHeaders() });
+  if (res.ok) {
+    allUsers = allUsers.filter(u => u.id !== id);
+    renderUsersTable(allUsers);
+  } else {
+    const d = await res.json();
+    alert(d.error || 'Failed to delete user');
+  }
+};
+
+// User search filter
+document.getElementById('user-search-input')?.addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  const filtered = allUsers.filter(u =>
+    (u.email || '').toLowerCase().includes(q) ||
+    (u.name || '').toLowerCase().includes(q)
+  );
+  renderUsersTable(filtered);
+});

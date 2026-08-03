@@ -1,160 +1,187 @@
-# 🛡️ Backlink Vault & Automated Link Auditor Bot
+# 🔗 Backlink Vault
 
-> A minimal, modern, Perplexity-inspired Backlink Vault web application with user authentication, Google Sign-In, Role-Based Access Control (RBAC), Admin Approval Workflow, and a rate-limited link auditor bot.
+> **Presented by Scene47** — Intelligent backlink discovery, automated SEO auditing & community-driven link management.
 
-[![Railway Deployable](https://img.shields.io/badge/Railway-Ready-0B0D0E?style=for-the-badge&logo=railway&logoColor=white)](https://railway.app)
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new/template)
 
 ---
 
-## 🌟 Key Features
+## 📋 What Is This App?
 
-* **🎨 Perplexity-Style Dark Theme**: Sleek obsidian UI (`#090a0f`) with glassmorphism, instant search bar, filter pills, and Chart.js analytics matrix.
-* **🔐 Multi-User Auth & Google Sign-In**: Integrated email/password authentication (salted SHA-256) and Google OAuth Client integration.
-* **👥 Role-Based Access Control (RBAC)**:
-  * **Regular User (`user`)**: Submit links, view owned links, request updates. Submissions enter `Pending Approval`.
-  * **Super Admin (`admin`)**: Access to **Admin Approval Queue**, **Tiny Bot Controls**, **Global Vault**, **Analytics**, and **CSV Export**.
-* **⚡ 20k+ Link Performance Indexing**: Paginated SQLite database queries (`LIMIT 100`) and composite indexes (`status`, `user_id`, `niche`, `url`).
-* **🤖 Rate-Limited "Tiny Bot" Inspector**:
-  * Auditing queue processes links sequentially with an anti-block safety delay (1.0s).
-  * Rotates desktop browser User-Agents (Chrome, Firefox, Safari).
-  * **Niche Classifier**: Categorizes site niches (SaaS & Tech, News & Media, SEO, Finance, Health, E-Commerce).
-  * **Algorithmic DA (0-100)**: Evaluates SSL, TLD weight, meta tag quality, and HTML structure.
-  * **DoFollow / NoFollow Auditor**: Detects link presence and verifies `rel` attributes (`nofollow`, `sponsored`, `ugc`, `dofollow`).
-* **📁 Multi-Column Excel & CSV Import/Export**:
-  * Native `.xlsx`, `.xls`, and `.csv` drag-and-drop file parsing using SheetJS.
-  * Regex URL extractor scans all columns and automatically normalizes deep article links to the **main domain**.
+**Backlink Vault** is a full-stack web application that acts as a shared, community-curated database of SEO backlink opportunities. It combines:
+
+- A **public vault** of backlink sources categorised by niche, domain authority, acquisition type, and link health
+- An **automated bot worker** that continuously crawls submitted URLs to check HTTP status, classify DoFollow/NoFollow, estimate Domain Authority, and extract niche metadata
+- A **user registration & personal tracker** so SEO practitioners can track their own link-building progress
+- A **full admin panel** with approval queue, CMS editing, user management, bot controls, and analytics
 
 ---
 
-## 🚀 Quick Start (Local Development)
+## 🏗️ Architecture Overview
 
-### Prerequisites
-* Python 3.10+ installed
-* Node.js / npm (optional for npm scripts)
+```
+backlink-vault/
+├── server.py          # Python HTTPServer — all routing, API endpoints, BotWorker thread
+├── index.html         # Single-page app shell (landing + main dashboard)
+├── app.js             # All frontend JS — auth, filters, tab switching, API calls
+├── styles.css         # Vanilla CSS design system (dark mode, glassmorphism)
+├── vault.db           # SQLite database (auto-created on first run)
+├── requirements.txt   # Python dependencies
+├── Procfile           # Deployment start command: `web: python -u server.py`
+└── nixpacks.toml      # Railway/Nixpacks build configuration
+```
 
-### Installation & Execution
+### Technology Stack
 
-1. **Clone Repository**:
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/backlink-vault.git
-   cd backlink-vault
-   ```
-
-2. **Configure Environment Variables**:
-   Copy `.env.example` to `.env`:
-   ```bash
-   cp .env.example .env
-   ```
-
-3. **Start Application**:
-   Using `npm`:
-   ```bash
-   npm start
-   ```
-   Or directly with `python`:
-   ```bash
-   python server.py
-   ```
-
-4. **Access Web Application**:
-   Open browser at **[http://localhost:8000](http://localhost:8000)**
-
-5. **Pre-Seeded Credentials**:
-   * **Admin Account**: `admin@vault.com` / `admin123`
-   * **Regular User**: Create account via **Log In / Sign Up** modal.
+| Layer | Technology |
+|-------|-----------|
+| Backend | Python 3.11+ — stdlib only (`http.server`, `sqlite3`, `threading`, `urllib`) |
+| Frontend | Vanilla HTML + CSS + JavaScript (no framework) |
+| Database | SQLite (single-file, zero config) |
+| Scraping | `BeautifulSoup4` + `urllib` with unverified SSL contexts |
+| Deployment | Railway, Render, Fly.io, or any VPS/container host |
 
 ---
 
-## 🌐 Railway Deployment
+## ⚙️ Minimum Server Requirements
 
-This project is structured for zero-configuration deployment on **[Railway](https://railway.app)**.
+| Resource | Minimum | Recommended |
+|----------|---------|-------------|
+| CPU | 0.5 vCPU | 1 vCPU |
+| RAM | 256 MB | 512 MB |
+| Disk | 500 MB | 2 GB |
+| Python | 3.11+ | 3.13+ |
+| OS | Linux (any distro) | Ubuntu 22.04 LTS |
+| Network | Outbound HTTP/HTTPS | Unrestricted |
 
-### Deployment Steps:
-
-1. **Connect Repository**:
-   * Go to **[Railway.app](https://railway.app)** and click **New Project** $\rightarrow$ **Deploy from GitHub repo**.
-   * Select your `backlink-vault` repository.
-
-2. **Add Environment Variables**:
-   In Railway Dashboard $\rightarrow$ **Variables**, add:
-   | Variable | Value / Description |
-   | :--- | :--- |
-   | `PORT` | Provided automatically by Railway (defaults to `8000`) |
-   | `SECRET_KEY` | Long random production secret string |
-   | `ADMIN_EMAIL` | `admin@vault.com` |
-   | `ADMIN_PASSWORD` | `your_secure_admin_password` |
-   | `BOT_DELAY` | `1.0` |
-
-3. **Click Deploy**:
-   * Railway automatically detects `Procfile` / `nixpacks.toml` / `package.json` and executes `python server.py`.
-
-4. **Verify Health Endpoint**:
-   * Once deployed, open `https://your-app.up.railway.app/health` in your browser.
-   * Expect HTTP 200 JSON response:
-     ```json
-     {
-       "status": "ok",
-       "service": "backlink-vault",
-       "timestamp": "2026-08-02 00:56:00"
-     }
-     ```
+> **Why not Cloudflare Pages / Vercel / Netlify?**  
+> This app requires a **persistent long-running process** (the BotWorker thread) and a **local SQLite file** on disk. Serverless edge platforms cannot satisfy these requirements. Use Railway, Render, Fly.io, or a VPS instead.
 
 ---
 
-## ⚙️ Environment Variables Reference
+## 🔑 Environment Variables
 
-| Variable | Default | Required | Description |
-| :--- | :--- | :--- | :--- |
-| `PORT` | `8000` | No | Server listening port (bound automatically by Railway) |
-| `SECRET_KEY` | `vault_default_secret_key_2026` | Yes (in prod) | Session & password hashing salt key |
-| `ADMIN_EMAIL` | `admin@vault.com` | Yes | Initial Super Admin login email |
-| `ADMIN_PASSWORD` | `admin123` | Yes | Initial Super Admin login password |
-| `BOT_DELAY` | `1.0` | No | Seconds delay between sequential bot requests |
-| `GOOGLE_CLIENT_ID` | `example-id` | No | Google OAuth Client ID for One Tap Sign-In |
+Set these in your hosting provider's dashboard (all have safe defaults):
 
----
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `PORT` | No | `8080` | Port the server listens on |
+| `SECRET_KEY` | Yes (prod) | `vault_default_secret_key_2026` | Used to sign session tokens — **change this in production** |
+| `ADMIN_EMAIL` | No | `ryn.ahmed101@gmail.com` | Admin login email |
+| `ADMIN_PASSWORD` | No | `Ryan@1206` | Admin login password |
+| `BOT_DELAY` | No | `1.0` | Seconds between bot scrape requests |
 
-## 📊 API Endpoint Architecture
-
-| Method | Endpoint | Access | Description |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/health` | Public | Railway health check status |
-| `POST` | `/api/auth/register` | Public | Register local user account |
-| `POST` | `/api/auth/login` | Public | Authenticate email/password, returns session token |
-| `POST` | `/api/auth/google` | Public | Authenticate Google OAuth profile |
-| `GET` | `/api/auth/me` | User | Get current logged-in user profile |
-| `GET` | `/api/backlinks` | User / Admin | Fetch paginated backlinks (`limit=100`) |
-| `POST` | `/api/backlinks` | User / Admin | Submit single URL (User $\rightarrow$ Pending, Admin $\rightarrow$ Approved) |
-| `POST` | `/api/backlinks/bulk` | User / Admin | Bulk import Excel/CSV lines |
-| `GET` | `/api/admin/approvals` | Admin Only | List all pending user submissions |
-| `POST` | `/api/admin/backlinks/:id/approve` | Admin Only | Approve link and queue for bot audit |
-| `POST` | `/api/admin/backlinks/:id/reject` | Admin Only | Reject link submission with reason note |
-| `GET` | `/api/bot/status` | Admin Only | Get bot execution state and live logs |
-| `POST` | `/api/bot/settings` | Admin Only | Pause/Resume bot worker or change delay |
-| `GET` | `/api/export/csv` | Admin Only | Download full audited vault CSV export |
+> ⚠️ **Change `SECRET_KEY` before deploying publicly.** Use a random 32+ character string.
 
 ---
 
-## 🛠️ Troubleshooting & FAQs
+## 🚀 Deploy to Railway (Recommended)
 
-#### 1. Why do user-submitted links say "Pending Approval"?
-Regular user submissions require Admin approval before entering the Tiny Bot auditing queue. Log in as `admin@vault.com` to review and approve them.
+1. Fork or push this repo to GitHub
+2. Go to [railway.app](https://railway.app) → New Project → Deploy from GitHub repo
+3. Select this repository
+4. Railway auto-detects `Procfile` and starts the app
+5. Set your environment variables in the Railway dashboard
+6. Add a custom domain or use the provided `.railway.app` URL
 
-#### 2. How does the app handle 20k+ links without slowing down?
-The database includes composite SQLite indexes (`idx_backlinks_status`, `idx_backlinks_user`, `idx_backlinks_niche`) and paginated API queries (`LIMIT 100`), ensuring page load times under 15ms.
-
-#### 3. How does URL domain normalization work?
-When uploading deep article links (e.g. `https://domain.com/2026/07/25/article-slug`), the parser strips deep paths and stores the clean main domain (`https://domain.com`).
+**Railway will auto-redeploy on every push to `main`.**
 
 ---
 
-## ✅ Deployment Checklist
+## 🐳 Deploy Anywhere Else (Docker / VPS)
 
-- [x] Production build and server start command verified (`python server.py`)
-- [x] Railway `/health` endpoint returns HTTP 200 OK
-- [x] No missing dependencies or broken import paths
-- [x] `.env.example` included and `.gitignore` configured
-- [x] Preserved 22,000+ link dataset (`vault.db`) for deployment continuity
-- [x] GitHub repository ready for deployment
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the server
+python server.py
+
+# Or with custom port
+PORT=3000 python server.py
+```
+
+The `vault.db` SQLite file is created automatically in the same directory on first run.
+
+---
+
+## 👤 User Roles
+
+| Role | Access |
+|------|--------|
+| **Guest** | Browse vault, view filters, read info pages |
+| **Member** | + Submit backlinks, use Personal Tracker, bulk upload CSV/XLSX |
+| **Admin** | + Approve/reject submissions, edit any backlink, manage users, control bot, edit CMS pages |
+
+**Admin account** is set via `ADMIN_EMAIL` / `ADMIN_PASSWORD` environment variables. Only one admin account exists — it is pre-seeded on every startup.
+
+---
+
+## 🤖 BotWorker
+
+The background `BotWorker` thread runs continuously and:
+
+1. Picks up URLs with status `Approved` or `Queued` from the database
+2. Fetches the page using a rotating User-Agent pool with SSL bypass
+3. Parses HTML with `BeautifulSoup4` to extract title, H1, H2, and meta description
+4. Classifies the site's **niche** using keyword matching across scraped content
+5. Detects **DoFollow / NoFollow** link equity
+6. Estimates **Domain Authority** (0–100) algorithmically
+7. Checks HTTP status (200 = Active, 4xx/5xx = Broken)
+8. Logs every action to `bot_logs` table for admin review
+
+---
+
+## 🗄️ Database Schema
+
+The SQLite database contains these tables (auto-created):
+
+- `users` — registered accounts
+- `sessions` — login session tokens
+- `backlinks` — the main vault (URL, niche, DA, status, acquisition type, etc.)
+- `personal_backlinks` — per-user private tracking
+- `bot_logs` — audit trail of every bot scrape
+- `bot_settings` — bot on/off toggle and delay config
+- `cms_pages` — editable content pages (About, Privacy, Terms, etc.)
+- `cms_settings` — site-wide settings (ads, banners)
+
+---
+
+## 📂 Key API Endpoints
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/api/auth/login` | Public | Login with email/password |
+| POST | `/api/auth/register` | Public | Create a new account |
+| GET | `/api/backlinks` | Public | List vault backlinks (filtered) |
+| POST | `/api/backlinks` | Member | Submit a new backlink |
+| GET | `/api/stats` | Public | Summary statistics |
+| GET | `/api/admin/users` | Admin | List all registered users |
+| GET | `/api/admin/approvals` | Admin | Pending approval queue |
+| POST | `/api/admin/backlinks/{id}/edit` | Admin | Edit any backlink |
+| POST | `/api/admin/backlinks/{id}/approve` | Admin | Approve a submission |
+| POST | `/api/admin/backlinks/{id}/reject` | Admin | Reject a submission |
+| POST | `/api/admin/users/{id}/delete` | Admin | Delete a user account |
+| GET | `/api/export/csv` | Admin | Export full vault as CSV |
+
+---
+
+## 🛠️ Making It Reusable for a New Brand
+
+To rebrand and redeploy for a different website:
+
+1. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` env vars to your new credentials
+2. Set a new `SECRET_KEY`
+3. Delete `vault.db` if you want a clean slate (or keep it as seed data)
+4. Update the brand name in `index.html` (search for `Backlink Vault` and `Scene47`)
+5. Push to a new GitHub repo and connect to Railway/Render
+
+---
+
+## 📜 License
+
+MIT — Free to use, modify, and deploy commercially.
+
+---
+
+*Built with Python stdlib + BeautifulSoup4. No bloated frameworks. Deploys in under 60 seconds.*

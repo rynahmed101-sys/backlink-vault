@@ -794,6 +794,47 @@ class RequestHandler(BaseHTTPRequestHandler):
                 conn.close()
                 return
 
+            elif path == "/api/admin/users":
+                if not current_user or current_user['role'] != 'admin':
+                    self._set_headers(403)
+                    self.wfile.write(json.dumps({"error": "Admin access required"}).encode('utf-8'))
+                    conn.close()
+                    return
+
+                cursor.execute('''
+                    SELECT u.id, u.email, u.name, u.role, u.created_at,
+                           COUNT(b.id) as backlinks_submitted
+                    FROM users u
+                    LEFT JOIN backlinks b ON b.user_id = u.id
+                    GROUP BY u.id
+                    ORDER BY u.created_at DESC
+                ''')
+                rows = cursor.fetchall()
+                results = [dict(r) for r in rows]
+                self._set_headers(200)
+                self.wfile.write(json.dumps(results).encode('utf-8'))
+                conn.close()
+                return
+
+            elif path.startswith("/api/admin/users/") and path.endswith("/delete"):
+                if not current_user or current_user['role'] != 'admin':
+                    self._set_headers(403)
+                    self.wfile.write(json.dumps({"error": "Admin access required"}).encode('utf-8'))
+                    conn.close()
+                    return
+                try:
+                    uid = int(path.split("/")[-2])
+                    cursor.execute("DELETE FROM users WHERE id = ?", (uid,))
+                    cursor.execute("DELETE FROM sessions WHERE user_id = ?", (uid,))
+                    conn.commit()
+                    self._set_headers(200)
+                    self.wfile.write(json.dumps({"ok": True}).encode('utf-8'))
+                except Exception as e:
+                    self._set_headers(500)
+                    self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+                conn.close()
+                return
+
             elif path == "/api/stats":
                 cursor.execute("SELECT COUNT(*) FROM backlinks")
                 total = cursor.fetchone()[0]
