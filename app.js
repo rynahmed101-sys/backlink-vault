@@ -1,3 +1,8 @@
+let currentPage = 1;
+let pageLimit = 50;
+let totalPages = 1;
+let totalBacklinksCount = 0;
+let searchDebounceTimeout = null;
 // ═══════════════════════════════════════════════════════════
 //  Backlink Vault — app.js  (complete rewrite)
 // ═══════════════════════════════════════════════════════════
@@ -352,7 +357,10 @@ function switchToPageTab(slug) {
 function initSearchAndFilters() {
   document.getElementById('search-input')?.addEventListener('input', (e) => {
     searchQuery = e.target.value;
-    fetchBacklinks();
+    if (searchDebounceTimeout) clearTimeout(searchDebounceTimeout);
+    searchDebounceTimeout = setTimeout(() => {
+      fetchBacklinks(1);
+    }, 300);
   });
 
   // Pill click delegation
@@ -472,11 +480,14 @@ function renderVaultTable(links) {
       ${isAdmin ? `<td style="text-align:center;"><input type="checkbox" class="vault-checkbox" value="${item.id}" ${isChecked ? 'checked' : ''} onchange="updateVaultSelection()"></td>` : ''}
       <td>
         <div style="display:flex; flex-direction:column; gap:2px;">
-          <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener"
-             style="font-weight:600; color:var(--text-main); text-decoration:none;"
-             title="${escapeHtml(item.url)}">
-            ${escapeHtml(truncate(titleText, 45))}
-          </a>
+          <div style="display:flex; align-items:center; gap:6px;">
+            <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener"
+               style="font-weight:600; color:var(--text-main); text-decoration:none;"
+               title="${escapeHtml(item.url)}">
+              ${escapeHtml(truncate(titleText, 40))}
+            </a>
+            ${item.ubersuggest_enriched === 1 ? '<span class="badge" style="font-size:9px; background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.3); padding:2px 5px;" title="Enriched by Ubersuggest MCP">🔌 UberSuggest</span>' : ''}
+          </div>
           <span style="font-size:11px; color:var(--text-dim);">
             ${escapeHtml(domain)}${item.target_url ? ' → ' + escapeHtml(truncate(item.target_url, 22)) : ''}
           </span>
@@ -642,6 +653,15 @@ async function fetchBotStatus() {
     }
 
     if (summary) summary.innerText = `Queue: ${(data.queue_count || 0).toLocaleString()} links`;
+
+    const timerDisp = document.getElementById('bot-timer-display');
+    const timerSub  = document.getElementById('bot-timer-subtext');
+    if (timerDisp && data.est_remaining_formatted) {
+      timerDisp.innerText = data.est_remaining_formatted;
+    }
+    if (timerSub) {
+      timerSub.innerText = `${(data.queue_count || 0).toLocaleString()} links remaining in queue (${data.workers || 1} workers @ ${data.speed_mode === 'turbo' ? '⚡ Turbo' : 'Normal'})`;
+    }
 
     // Only populate speed controls on FIRST load - never overwrite while user is editing
     if (!fetchBotStatus._settingsLoaded) {

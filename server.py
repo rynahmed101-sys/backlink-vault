@@ -90,6 +90,9 @@ def init_db():
     cursor = conn.cursor()
     try:
         cursor.execute("PRAGMA journal_mode=WAL;")
+        cursor.execute("PRAGMA synchronous=NORMAL;")
+        cursor.execute("PRAGMA cache_size=-64000;")
+        cursor.execute("PRAGMA temp_store=MEMORY;")
     except Exception:
         pass
 
@@ -155,6 +158,14 @@ def init_db():
 
     try: cursor.execute("ALTER TABLE backlinks ADD COLUMN acquisition_type TEXT DEFAULT 'Easy Do-Follow'")
     except sqlite3.OperationalError: pass
+
+    try: cursor.execute("ALTER TABLE backlinks ADD COLUMN ubersuggest_enriched INTEGER DEFAULT 0")
+    except sqlite3.OperationalError: pass
+
+    # Put all active/broken/approved backlinks in queue for a full fresh scan
+    try: cursor.execute("UPDATE backlinks SET status = 'Re-scan' WHERE status IN ('Active', 'Approved', 'Broken', 'Auditing', 'Queued')")
+    except Exception as eq: pass
+
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS bot_logs (
@@ -622,22 +633,24 @@ class BotWorker(threading.Thread):
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         html_text = ""  # Explicitly free memory
 
+        # --- Clean URL & Domain Cropping ---
+        clean_url = url.split('#')[0].split('?')[0].rstrip('/')
+        
         # --- Ubersuggest MCP Enrichment ---
-        mcp_data = self.ubersuggest_enrich(url)
+        mcp_data = self.ubersuggest_enrich(clean_url)
         mcp_log = ""
+        us_enriched_flag = 0
         if mcp_data:
+            us_enriched_flag = 1
             try:
-                # Ubersuggest may return traffic, keywords, da fields
                 us_da = mcp_data.get("domain_score") or mcp_data.get("da") or mcp_data.get("authority_score")
                 us_traffic = mcp_data.get("organic_monthly_traffic") or mcp_data.get("traffic") or mcp_data.get("estimated_visits")
                 us_keywords = mcp_data.get("organic_keywords") or mcp_data.get("keywords_count") or mcp_data.get("keywords")
                 us_niche = mcp_data.get("category") or mcp_data.get("industry")
 
-                # Use Ubersuggest DA if it's more authoritative (higher weight)
                 if us_da and int(us_da) > 0:
                     da = max(da, int(us_da))
 
-                # Niche override from Ubersuggest if we got "Uncategorized"
                 if us_niche and niche in ("General", "Uncategorized", ""):
                     niche = str(us_niche).title()
 
@@ -645,11 +658,10 @@ class BotWorker(threading.Thread):
                 if us_traffic: parts.append(f"Traffic≈{int(us_traffic):,}")
                 if us_keywords: parts.append(f"KW≈{int(us_keywords):,}")
                 if us_da: parts.append(f"US-DA:{int(us_da)}")
-                mcp_log = " | UberSuggest: " + ", ".join(parts) if parts else " | UberSuggest: enriched"
+                mcp_log = " | 🔌 UberSuggest: " + (", ".join(parts) if parts else "Enriched")
             except Exception as mcp_parse_err:
                 mcp_log = f" | MCP parse err: {mcp_parse_err}"
 
-        # Boost value_score when traffic/keywords data is available (adds perspective)
         if mcp_data and val_score < 80:
             val_score = min(100, val_score + 5)
 
@@ -661,9 +673,10 @@ class BotWorker(threading.Thread):
                 UPDATE backlinks SET
                     niche = ?, da_score = ?, value_score = ?, status = ?,
                     http_code = ?, rel_type = ?, site_title = ?, site_description = ?,
-                    response_time_ms = ?, risk_score = ?, last_checked = ?, acquisition_type = ?
+                    response_time_ms = ?, risk_score = ?, last_checked = ?, acquisition_type = ?,
+                    ubersuggest_enriched = ?
                 WHERE id = ?
-            ''', (niche, da, val_score, final_status, http_code, rel_type, site_title or url, site_desc, elapsed_ms, risk_score, now_str, acq_type, link_id))
+            ''', (niche, da, val_score, final_status, http_code, rel_type, site_title or url, site_desc, elapsed_ms, risk_score, now_str, acq_type, us_enriched_flag, link_id))
             conn.commit()
             conn.close()
             print(f"[BOT-W{self.worker_id}] {url[:60]} → {final_status} | DA:{da} Score:{val_score}{mcp_log}", flush=True)
@@ -883,13 +896,53 @@ class RequestHandler(BaseHTTPRequestHandler):
                     sql += " AND b.acquisition_type = ?"
                     params.append(acq_filter)
 
+                # Total count for pagination
+                count_sql = "SELECT COUNT(*) FROM backlinks b WHERE 1=1"
+                if not is_admin and not mine_only:
+                    pass
+                elif mine_only and current_user:
+                    count_sql += " AND b.user_id = ?"
+                if search:
+                    count_sql += " AND (b.url LIKE ? OR b.site_title LIKE ? OR b.target_url LIKE ? OR b.anchor_text LIKE ?)"
+                if niche_filter != "All":
+                    count_sql += " AND b.niche = ?"
+                if status_filter != "All":
+                    count_sql += " AND b.status = ?"
+                if rel_filter != "All":
+                    if rel_filter == "DoFollow":
+                        count_sql += " AND (b.rel_type = 'DoFollow' OR b.rel_type = 'Domain Indexed')"
+                    else:
+                        count_sql += " AND b.rel_type = ?"
+                if acq_filter != "All":
+                    count_sql += " AND b.acquisition_type = ?"
+
+                cursor.execute(count_sql, params)
+                total_count = cursor.fetchone()[0]
+
+                page = int(query.get("page", [1])[0])
+                page = max(1, page)
+                if limit <= 0:
+                    limit = 50
+
+                offset = (page - 1) * limit
                 sql += f" ORDER BY b.id DESC LIMIT {limit} OFFSET {offset}"
                 cursor.execute(sql, params)
                 rows = cursor.fetchall()
                 results = [dict(r) for r in rows]
 
+                import math
+                total_pages = math.ceil(total_count / limit) if limit > 0 else 1
+
+                response_payload = {
+                    "items": results,
+                    "total": total_count,
+                    "page": page,
+                    "limit": limit,
+                    "total_pages": total_pages
+                }
+
                 self._set_headers(200)
-                self.wfile.write(json.dumps(results).encode('utf-8'))
+                self.wfile.write(json.dumps(response_payload).encode('utf-8'))
                 conn.close()
                 return
 
@@ -1012,12 +1065,33 @@ class RequestHandler(BaseHTTPRequestHandler):
 
                 has_ubersuggest = bool(settings.get("ubersuggest_access_token"))
 
+                num_workers = int(settings.get("workers", "1"))
+                delay_val = float(settings.get("delay", str(DEFAULT_BOT_DELAY)))
+                speed_mode = settings.get("speed_mode", "normal")
+                
+                # Calculate estimated time remaining
+                per_url_secs = 1.2 + (0.0 if speed_mode == "turbo" else delay_val)
+                est_seconds = int((queue_count / max(1, num_workers)) * per_url_secs) if queue_count > 0 else 0
+
+                if est_seconds > 3600:
+                    hrs = est_seconds // 3600
+                    mins = (est_seconds % 3600) // 60
+                    est_formatted = f"~{hrs}h {mins}m"
+                elif est_seconds > 60:
+                    mins = est_seconds // 60
+                    secs = est_seconds % 60
+                    est_formatted = f"~{mins}m {secs}s"
+                else:
+                    est_formatted = f"~{est_seconds}s"
+
                 res = {
                     "status": settings.get("status", "running"),
-                    "delay": float(settings.get("delay", str(DEFAULT_BOT_DELAY))),
-                    "workers": int(settings.get("workers", "1")),
-                    "speed_mode": settings.get("speed_mode", "normal"),
+                    "delay": delay_val,
+                    "workers": num_workers,
+                    "speed_mode": speed_mode,
                     "queue_count": queue_count,
+                    "est_remaining_seconds": est_seconds,
+                    "est_remaining_formatted": est_formatted,
                     "ubersuggest_connected": has_ubersuggest,
                     "logs": [dict(r) for r in log_rows]
                 }
