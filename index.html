@@ -185,9 +185,9 @@
       </div>
 
       <nav class="nav-menu">
-        <div class="nav-item" onclick="window.location.href='/'">
+        <div class="nav-item" onclick="showLanding()">
           <svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-          Home
+          Home / Landing Page
         </div>
         <div class="nav-item active" data-tab="vault">
           <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
@@ -553,6 +553,7 @@
               <div class="form-group">
                 <label>Select Page</label>
                 <select id="cms-editor-slug" class="form-control" onchange="loadCMSEditorPage(this.value)">
+                  <option value="homepage-hero">Homepage Hero Banner</option>
                   <option value="about-us">About Us</option>
                   <option value="company-details">Company Details</option>
                   <option value="privacy-policy">Privacy Policy</option>
@@ -691,7 +692,7 @@
                 </div>
                 <div style="display: flex; align-items: center; gap: 8px;">
                   <label style="font-size: 12px; color: var(--text-muted);">Mode:</label>
-                  <select id="bot-speed-mode-select"
+                  <select id="bot-speed-mode-select" onchange="onBotModeChange(this)"
                     style="background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-main); padding: 5px 8px; font-size: 13px;">
                     <option value="normal">Normal (polite)</option>
                     <option value="turbo">⚡ Turbo (max speed)</option>

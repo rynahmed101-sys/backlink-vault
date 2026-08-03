@@ -620,13 +620,16 @@ async function fetchBotStatus() {
 
     if (summary) summary.innerText = `Queue: ${(data.queue_count || 0).toLocaleString()} links`;
 
-    // Populate speed controls from server data
-    const workersInput = document.getElementById('bot-workers-input');
-    const delayInput   = document.getElementById('bot-delay-input');
-    const modeSelect   = document.getElementById('bot-speed-mode-select');
-    if (workersInput && data.workers) workersInput.value = data.workers;
-    if (delayInput && data.delay !== undefined) delayInput.value = data.delay;
-    if (modeSelect && data.speed_mode) modeSelect.value = data.speed_mode;
+    // Only populate speed controls on FIRST load - never overwrite while user is editing
+    if (!fetchBotStatus._settingsLoaded) {
+      fetchBotStatus._settingsLoaded = true;
+      const workersInput = document.getElementById('bot-workers-input');
+      const delayInput   = document.getElementById('bot-delay-input');
+      const modeSelect   = document.getElementById('bot-speed-mode-select');
+      if (workersInput && data.workers) workersInput.value = data.workers;
+      if (delayInput && data.delay !== undefined) delayInput.value = data.delay;
+      if (modeSelect && data.speed_mode) modeSelect.value = data.speed_mode;
+    }
 
     // Update Ubersuggest MCP status badge & action button
     const mcpBadge = document.getElementById('mcp-status-badge');
@@ -1412,6 +1415,16 @@ window.rescanAllDomains = async function() {
 // -----------------------------------------------
 // BOT SPEED & WORKER SETTINGS
 // -----------------------------------------------
+// Auto-configure when turbo mode is selected
+window.onBotModeChange = function(select) {
+  if (select.value === 'turbo') {
+    const wi = document.getElementById('bot-workers-input');
+    const di = document.getElementById('bot-delay-input');
+    if (wi) wi.value = 5;
+    if (di) di.value = 0;
+  }
+};
+
 window.saveBotSpeedSettings = async function() {
   const workers   = parseInt(document.getElementById('bot-workers-input')?.value || '1', 10);
   const delay     = parseFloat(document.getElementById('bot-delay-input')?.value || '1');
@@ -1508,7 +1521,7 @@ window.changePassword = async function() {
 
 window.deleteMyAccount = async function() {
   if (!confirm('Are you absolutely sure? This will permanently delete your account AND all your personal backlink data. There is no undo.')) return;
-  if (!confirm('Last chance — delete my account permanently?')) return;
+  if (!confirm('Last chance ï¿½ delete my account permanently?')) return;
   try {
     const res = await fetch('/api/user/delete-account', { method: 'POST', headers: getHeaders() });
     const data = await res.json();
