@@ -38,6 +38,14 @@ ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "ryn.ahmed101@gmail.com").strip().lo
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "Ryan@1206")
 DEFAULT_BOT_DELAY = float(os.environ.get("BOT_DELAY", 1.0))
 
+# Ubersuggest MCP Integration
+UBERSUGGEST_MCP_URL    = "https://ubersuggest-mcp.neilpatelapi.com/mcp"
+UBERSUGGEST_AUTH_URL   = "https://ubersuggest-mcp.neilpatelapi.com/authorize"
+UBERSUGGEST_TOKEN_URL  = "https://ubersuggest-mcp.neilpatelapi.com/token"
+UBERSUGGEST_CLIENT_ID  = "ubersuggest-mcp"
+UBERSUGGEST_REDIRECT   = os.environ.get("BASE_URL", "https://backlink-vault.up.railway.app") + "/oauth/ubersuggest/callback"
+UBERSUGGEST_SCOPE      = "domain keywords backlinks"
+
 USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
@@ -421,6 +429,79 @@ class BotWorker(threading.Thread):
         except Exception as log_err:
             print(f"[BOT-LOG-ERR] {log_err}", flush=True)
 
+    def _get_ubersuggest_token(self):
+        """Retrieve stored Ubersuggest OAuth token from bot_settings."""
+        try:
+            conn = sqlite3.connect(DB_PATH, timeout=5)
+            cursor = conn.cursor()
+            cursor.execute("SELECT value FROM bot_settings WHERE key = 'ubersuggest_access_token'")
+            row = cursor.fetchone()
+            conn.close()
+            return row[0] if row else None
+        except Exception:
+            return None
+
+    def ubersuggest_enrich(self, domain):
+        """Call Ubersuggest MCP to get domain overview. Returns dict or None."""
+        token = self._get_ubersuggest_token()
+        if not token:
+            return None
+        try:
+            # Extract root domain
+            parsed = urllib.parse.urlparse(domain if domain.startswith('http') else 'https://' + domain)
+            root_domain = parsed.netloc or parsed.path
+
+            payload = json.dumps({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {
+                    "name": "get_domain_overview",
+                    "arguments": {"domain": root_domain}
+                }
+            }).encode('utf-8')
+
+            req = urllib.request.Request(
+                UBERSUGGEST_MCP_URL,
+                data=payload,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json, text/event-stream"
+                },
+                method="POST"
+            )
+            ctx = ssl._create_unverified_context()
+            with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
+                raw = resp.read().decode('utf-8')
+                # Handle SSE format: lines starting with "data:"
+                for line in raw.splitlines():
+                    if line.startswith("data:"):
+                        data_str = line[5:].strip()
+                        if data_str and data_str != "[DONE]":
+                            try:
+                                rpc_resp = json.loads(data_str)
+                                result = rpc_resp.get("result", {})
+                                content = result.get("content", [])
+                                if content and isinstance(content, list):
+                                    text = content[0].get("text", "")
+                                    return json.loads(text) if text else None
+                            except Exception:
+                                pass
+                # Try direct JSON parse
+                try:
+                    rpc_resp = json.loads(raw)
+                    result = rpc_resp.get("result", {})
+                    content = result.get("content", [])
+                    if content and isinstance(content, list):
+                        text = content[0].get("text", "")
+                        return json.loads(text) if text else None
+                except Exception:
+                    pass
+        except Exception as e:
+            print(f"[BOT-MCP] Ubersuggest enrichment error: {e}", flush=True)
+        return None
+
     def run(self):
         import traceback
         print("[BOT] Inspector Worker started.", flush=True)
@@ -531,6 +612,37 @@ class BotWorker(threading.Thread):
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         html_text = ""  # Explicitly free memory
 
+        # --- Ubersuggest MCP Enrichment ---
+        mcp_data = self.ubersuggest_enrich(url)
+        mcp_log = ""
+        if mcp_data:
+            try:
+                # Ubersuggest may return traffic, keywords, da fields
+                us_da = mcp_data.get("domain_score") or mcp_data.get("da") or mcp_data.get("authority_score")
+                us_traffic = mcp_data.get("organic_monthly_traffic") or mcp_data.get("traffic") or mcp_data.get("estimated_visits")
+                us_keywords = mcp_data.get("organic_keywords") or mcp_data.get("keywords_count") or mcp_data.get("keywords")
+                us_niche = mcp_data.get("category") or mcp_data.get("industry")
+
+                # Use Ubersuggest DA if it's more authoritative (higher weight)
+                if us_da and int(us_da) > 0:
+                    da = max(da, int(us_da))
+
+                # Niche override from Ubersuggest if we got "Uncategorized"
+                if us_niche and niche in ("General", "Uncategorized", ""):
+                    niche = str(us_niche).title()
+
+                parts = []
+                if us_traffic: parts.append(f"Traffic≈{int(us_traffic):,}")
+                if us_keywords: parts.append(f"KW≈{int(us_keywords):,}")
+                if us_da: parts.append(f"US-DA:{int(us_da)}")
+                mcp_log = " | UberSuggest: " + ", ".join(parts) if parts else " | UberSuggest: enriched"
+            except Exception as mcp_parse_err:
+                mcp_log = f" | MCP parse err: {mcp_parse_err}"
+
+        # Boost value_score when traffic/keywords data is available (adds perspective)
+        if mcp_data and val_score < 80:
+            val_score = min(100, val_score + 5)
+
         # --- Write results back to DB ---
         try:
             conn = sqlite3.connect(DB_PATH, timeout=10)
@@ -544,7 +656,7 @@ class BotWorker(threading.Thread):
             ''', (niche, da, val_score, final_status, http_code, rel_type, site_title or url, site_desc, elapsed_ms, risk_score, now_str, acq_type, link_id))
             conn.commit()
             conn.close()
-            print(f"[BOT] {url[:60]} → {final_status} | DA:{da} Score:{val_score}", flush=True)
+            print(f"[BOT] {url[:60]} → {final_status} | DA:{da} Score:{val_score}{mcp_log}", flush=True)
         except Exception as write_err:
             print(f"[BOT-WRITE-ERR] {write_err}", flush=True)
 
@@ -888,15 +1000,116 @@ class RequestHandler(BaseHTTPRequestHandler):
                 cursor.execute("SELECT * FROM bot_logs ORDER BY id DESC LIMIT 50")
                 log_rows = cursor.fetchall()
 
+                has_ubersuggest = bool(settings.get("ubersuggest_access_token"))
+
                 res = {
                     "status": settings.get("status", "running"),
                     "delay": float(settings.get("delay", str(DEFAULT_BOT_DELAY))),
                     "queue_count": queue_count,
+                    "ubersuggest_connected": has_ubersuggest,
                     "logs": [dict(r) for r in log_rows]
                 }
 
                 self._set_headers(200)
                 self.wfile.write(json.dumps(res).encode('utf-8'))
+                conn.close()
+                return
+
+            elif path == "/api/admin/ubersuggest/connect":
+                if not current_user or current_user['role'] != 'admin':
+                    self._set_headers(403)
+                    self.wfile.write(json.dumps({"error": "Admin access required"}).encode('utf-8'))
+                    conn.close()
+                    return
+
+                # PKCE generation
+                verifier = secrets.token_urlsafe(32)
+                digest = hashlib.sha256(verifier.encode('utf-8')).digest()
+                challenge = base64.urlsafe_b64encode(digest).decode('utf-8').rstrip('=')
+
+                cursor.execute("INSERT OR REPLACE INTO bot_settings (key, value) VALUES ('ubersuggest_code_verifier', ?)", (verifier,))
+                conn.commit()
+
+                # Build redirect URL dynamically based on Host header if present
+                host = self.headers.get("Host", "backlink-vault.up.railway.app")
+                scheme = "https" if "railway" in host or "herokuapp" in host or "render" in host else "http"
+                redirect_uri = f"{scheme}://{host}/oauth/ubersuggest/callback"
+
+                params = {
+                    "response_type": "code",
+                    "client_id": UBERSUGGEST_CLIENT_ID,
+                    "redirect_uri": redirect_uri,
+                    "scope": UBERSUGGEST_SCOPE,
+                    "code_challenge": challenge,
+                    "code_challenge_method": "S256"
+                }
+                auth_redirect_url = UBERSUGGEST_AUTH_URL + "?" + urllib.parse.urlencode(params)
+
+                self.send_response(302)
+                self.send_header("Location", auth_redirect_url)
+                self.end_headers()
+                conn.close()
+                return
+
+            elif path == "/oauth/ubersuggest/callback":
+                code = query.get("code", [None])[0]
+                if not code:
+                    self._set_headers(400)
+                    self.wfile.write(json.dumps({"error": "Missing authorization code"}).encode('utf-8'))
+                    conn.close()
+                    return
+
+                cursor.execute("SELECT value FROM bot_settings WHERE key = 'ubersuggest_code_verifier'")
+                v_row = cursor.fetchone()
+                verifier = v_row[0] if v_row else ""
+
+                host = self.headers.get("Host", "backlink-vault.up.railway.app")
+                scheme = "https" if "railway" in host or "herokuapp" in host or "render" in host else "http"
+                redirect_uri = f"{scheme}://{host}/oauth/ubersuggest/callback"
+
+                token_payload = urllib.parse.urlencode({
+                    "grant_type": "authorization_code",
+                    "client_id": UBERSUGGEST_CLIENT_ID,
+                    "code": code,
+                    "redirect_uri": redirect_uri,
+                    "code_verifier": verifier
+                }).encode('utf-8')
+
+                req = urllib.request.Request(
+                    UBERSUGGEST_TOKEN_URL,
+                    data=token_payload,
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    method="POST"
+                )
+                ctx = ssl._create_unverified_context()
+                try:
+                    with urllib.request.urlopen(req, timeout=10, context=ctx) as response:
+                        token_resp = json.loads(response.read().decode('utf-8'))
+                        access_token = token_resp.get("access_token")
+                        if access_token:
+                            cursor.execute("INSERT OR REPLACE INTO bot_settings (key, value) VALUES ('ubersuggest_access_token', ?)", (access_token,))
+                            conn.commit()
+
+                    self.send_response(302)
+                    self.send_header("Location", "/?ubersuggest=connected")
+                    self.end_headers()
+                except Exception as ex:
+                    self._set_headers(500)
+                    self.wfile.write(json.dumps({"error": f"Failed to exchange token: {str(ex)}"}).encode('utf-8'))
+                
+                conn.close()
+                return
+
+            elif path == "/api/admin/ubersuggest/disconnect":
+                if not current_user or current_user['role'] != 'admin':
+                    self._set_headers(403)
+                    self.wfile.write(json.dumps({"error": "Admin access required"}).encode('utf-8'))
+                    conn.close()
+                    return
+                cursor.execute("DELETE FROM bot_settings WHERE key = 'ubersuggest_access_token'")
+                conn.commit()
+                self._set_headers(200)
+                self.wfile.write(json.dumps({"ok": True}).encode('utf-8'))
                 conn.close()
                 return
 

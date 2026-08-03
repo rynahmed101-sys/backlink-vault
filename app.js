@@ -610,6 +610,23 @@ async function fetchBotStatus() {
 
     if (summary) summary.innerText = `Queue: ${(data.queue_count || 0).toLocaleString()} links`;
 
+    // Update Ubersuggest MCP status badge & action button
+    const mcpBadge = document.getElementById('mcp-status-badge');
+    const mcpAction = document.getElementById('mcp-action-container');
+    if (mcpBadge && mcpAction) {
+      if (data.ubersuggest_connected) {
+        mcpBadge.className = 'badge badge-acq-easy';
+        mcpBadge.style.cssText = 'font-size: 11px; background: rgba(16,185,129,0.15); color: #10b981; border: 1px solid rgba(16,185,129,0.3);';
+        mcpBadge.innerText = 'Connected & Active';
+        mcpAction.innerHTML = `<button onclick="disconnectUbersuggest()" class="btn btn-secondary" style="font-size: 11px; padding: 6px 12px; color: var(--accent-rose);">Disconnect</button>`;
+      } else {
+        mcpBadge.className = 'badge';
+        mcpBadge.style.cssText = 'font-size: 11px; background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid var(--border-color);';
+        mcpBadge.innerText = 'Not Connected';
+        mcpAction.innerHTML = `<a href="/api/admin/ubersuggest/connect" class="btn btn-primary" style="font-size: 12px; padding: 8px 16px;">Connect Ubersuggest</a>`;
+      }
+    }
+
     if (currentTab === 'bot') {
       const terminal = document.getElementById('bot-terminal');
       if (terminal && Array.isArray(data.logs)) {
@@ -626,6 +643,14 @@ async function fetchBotStatus() {
     console.error('fetchBotStatus error:', err);
   }
 }
+
+window.disconnectUbersuggest = async function() {
+  if (!confirm('Disconnect Ubersuggest MCP connection?')) return;
+  const res = await fetch('/api/admin/ubersuggest/disconnect', { method: 'POST', headers: getHeaders() });
+  if (res.ok) {
+    fetchBotStatus();
+  }
+};
 
 async function toggleBot() {
   const next = botState === 'running' ? 'paused' : 'running';
