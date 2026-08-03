@@ -236,6 +236,12 @@
           <svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
           User Management
         </div>
+
+        <!-- Admin Restart Button -->
+        <div class="nav-item admin-only" onclick="restartServer()" style="display: none; margin-top: auto; color: var(--accent-rose);">
+          <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"></polyline><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+          Restart Server
+        </div>
       </nav>
 
       <!-- Sidebar Ad Slot -->
@@ -486,6 +492,30 @@
                 <tbody id="personal-table-body"></tbody>
               </table>
             </div>
+
+            <!-- Account Management Card -->
+            <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 24px; display: flex; flex-direction: column; gap: 20px;">
+              <h3 style="font-size: 15px; font-weight: 700; margin: 0;">⚙️ Account Management</h3>
+              <!-- Change Password -->
+              <div style="display: flex; flex-direction: column; gap: 10px; padding-bottom: 20px; border-bottom: 1px solid var(--border-color);">
+                <div style="font-size: 13px; font-weight: 600;">Change Password</div>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                  <input type="password" id="acct-current-pw" placeholder="Current password"
+                    style="flex: 1; min-width: 150px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-main); padding: 8px 12px; font-size: 13px;">
+                  <input type="password" id="acct-new-pw" placeholder="New password (min 6 chars)"
+                    style="flex: 1; min-width: 150px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-main); padding: 8px 12px; font-size: 13px;">
+                  <button class="btn btn-primary" onclick="changePassword()" style="font-size: 12px; padding: 8px 16px;">Update Password</button>
+                </div>
+              </div>
+              <!-- Delete Account -->
+              <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                <div>
+                  <div style="font-size: 13px; font-weight: 600; color: var(--accent-rose);">Delete Account</div>
+                  <div style="font-size: 12px; color: var(--text-muted);">Permanently deletes your account and all personal backlink data. This cannot be undone.</div>
+                </div>
+                <button class="btn btn-secondary" onclick="deleteMyAccount()" style="font-size: 12px; padding: 8px 16px; color: var(--accent-rose); border-color: var(--accent-rose);">🗑 Delete My Account</button>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -618,16 +648,26 @@
             </div>
 
             <!-- Ubersuggest MCP Weaponization Integration Card -->
-            <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
-              <div>
-                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
-                  <span style="font-weight: 700; font-size: 15px;">🔌 Ubersuggest MCP Integration</span>
-                  <span id="mcp-status-badge" class="badge" style="font-size: 11px; background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid var(--border-color);">Checking...</span>
+            <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 20px; display: flex; flex-direction: column; gap: 14px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+                <div>
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
+                    <span style="font-weight: 700; font-size: 15px;">🔌 Ubersuggest MCP Integration</span>
+                    <span id="mcp-status-badge" class="badge" style="font-size: 11px; background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid var(--border-color);">Checking...</span>
+                  </div>
+                  <p style="font-size: 12px; color: var(--text-muted); margin: 0;">Weaponize bot scans with live Ubersuggest metrics (organic traffic, keyword volume, domain authority).</p>
                 </div>
-                <p style="font-size: 12px; color: var(--text-muted);">Weaponize bot scans with live Ubersuggest metrics (organic traffic, keyword volume, domain authority).</p>
+                <div id="mcp-action-container">
+                  <a href="/api/admin/ubersuggest/connect" class="btn btn-primary" style="font-size: 12px; padding: 8px 16px;">Connect via OAuth</a>
+                </div>
               </div>
-              <div id="mcp-action-container">
-                <a href="/api/admin/ubersuggest/connect" class="btn btn-primary" style="font-size: 12px; padding: 8px 16px;">Connect Ubersuggest</a>
+              <!-- Manual token fallback -->
+              <div style="display: flex; align-items: center; gap: 10px; padding-top: 10px; border-top: 1px solid var(--border-color); flex-wrap: wrap;">
+                <span style="font-size: 11px; color: var(--text-muted); white-space: nowrap;">Or paste token manually:</span>
+                <input type="password" id="mcp-manual-token-input" placeholder="Paste Ubersuggest access token..."
+                  style="flex: 1; min-width: 200px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-main); padding: 6px 10px; font-size: 12px;">
+                <button class="btn btn-secondary" onclick="saveManualMCPToken()" style="font-size: 11px; padding: 6px 12px;">Save Token</button>
+                <a href="https://app.ubersuggest.com" target="_blank" class="btn btn-secondary" style="font-size: 11px; padding: 6px 12px; color: var(--accent-cyan);">Get Token ↗</a>
               </div>
             </div>
 

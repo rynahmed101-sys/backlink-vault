@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import base64
 import sqlite3
 import urllib.request
 import urllib.parse
@@ -210,6 +211,8 @@ def init_db():
 
     cursor.execute("INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('delay', ?)", (str(DEFAULT_BOT_DELAY),))
     cursor.execute("INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('status', 'running')")
+    cursor.execute("INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('workers', '1')")
+    cursor.execute("INSERT OR IGNORE INTO bot_settings (key, value) VALUES ('speed_mode', 'normal')")
 
     DEFAULT_CMS_PAGES = [
         ("about-us", "About Us", "<h2>About Backlink Vault</h2><p>Backlink Vault is an enterprise-grade intelligent link auditor and repository designed to help website owners, SEO professionals, and digital marketers discover, analyze, and manage high-authority backlinks.</p><p>Our automated inspection bot verifies response codes, rel attributes (DoFollow / NoFollow / UGC / Sponsored), Domain Authority estimations, and risk factors in real time.</p>"),
@@ -1115,6 +1118,88 @@ class RequestHandler(BaseHTTPRequestHandler):
                     conn.close()
                     return
                 cursor.execute("DELETE FROM bot_settings WHERE key = 'ubersuggest_access_token'")
+                conn.commit()
+                self._set_headers(200)
+                self.wfile.write(json.dumps({"ok": True}).encode('utf-8'))
+                conn.close()
+                return
+
+            elif path == "/api/admin/ubersuggest/token":
+                # Allow admin to manually paste an access token
+                if not current_user or current_user['role'] != 'admin':
+                    self._set_headers(403)
+                    self.wfile.write(json.dumps({"error": "Admin access required"}).encode('utf-8'))
+                    conn.close()
+                    return
+                token = data.get("token", "").strip()
+                if not token:
+                    self._set_headers(400)
+                    self.wfile.write(json.dumps({"error": "Token required"}).encode('utf-8'))
+                    conn.close()
+                    return
+                cursor.execute("INSERT OR REPLACE INTO bot_settings (key, value) VALUES ('ubersuggest_access_token', ?)", (token,))
+                conn.commit()
+                self._set_headers(200)
+                self.wfile.write(json.dumps({"ok": True}).encode('utf-8'))
+                conn.close()
+                return
+
+            elif path == "/api/admin/restart":
+                # Restart the server process (Railway will keep it alive)
+                if not current_user or current_user['role'] != 'admin':
+                    self._set_headers(403)
+                    self.wfile.write(json.dumps({"error": "Admin access required"}).encode('utf-8'))
+                    conn.close()
+                    return
+                self._set_headers(200)
+                self.wfile.write(json.dumps({"ok": True, "message": "Server restarting in 2s..."}).encode('utf-8'))
+                conn.close()
+                # Schedule restart after response is sent
+                def do_restart():
+                    time.sleep(2)
+                    os.execv(sys.executable, [sys.executable] + sys.argv)
+                threading.Thread(target=do_restart, daemon=True).start()
+                return
+
+            elif path == "/api/user/delete-account":
+                if not current_user:
+                    self._set_headers(401)
+                    self.wfile.write(json.dumps({"error": "Authentication required"}).encode('utf-8'))
+                    conn.close()
+                    return
+                # Delete all user data and the account itself
+                uid = current_user['id']
+                cursor.execute("DELETE FROM personal_backlinks WHERE user_id = ?", (uid,))
+                cursor.execute("DELETE FROM sessions WHERE user_id = ?", (uid,))
+                cursor.execute("DELETE FROM users WHERE id = ?", (uid,))
+                conn.commit()
+                self._set_headers(200)
+                self.wfile.write(json.dumps({"ok": True, "message": "Account deleted successfully"}).encode('utf-8'))
+                conn.close()
+                return
+
+            elif path == "/api/user/change-password":
+                if not current_user:
+                    self._set_headers(401)
+                    self.wfile.write(json.dumps({"error": "Authentication required"}).encode('utf-8'))
+                    conn.close()
+                    return
+                current_pw = data.get("current_password", "")
+                new_pw = data.get("new_password", "").strip()
+                if len(new_pw) < 6:
+                    self._set_headers(400)
+                    self.wfile.write(json.dumps({"error": "New password must be at least 6 characters"}).encode('utf-8'))
+                    conn.close()
+                    return
+                cursor.execute("SELECT password_hash FROM users WHERE id = ?", (current_user['id'],))
+                row = cursor.fetchone()
+                if not row or hashlib.sha256(current_pw.encode()).hexdigest() != row[0]:
+                    self._set_headers(403)
+                    self.wfile.write(json.dumps({"error": "Current password is incorrect"}).encode('utf-8'))
+                    conn.close()
+                    return
+                new_hash = hashlib.sha256(new_pw.encode()).hexdigest()
+                cursor.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, current_user['id']))
                 conn.commit()
                 self._set_headers(200)
                 self.wfile.write(json.dumps({"ok": True}).encode('utf-8'))

@@ -1436,3 +1436,87 @@ window.saveBotSpeedSettings = async function() {
     console.error('saveBotSpeedSettings error:', err);
   }
 };
+
+// -----------------------------------------------
+// UBERSUGGEST MANUAL TOKEN SAVE
+// -----------------------------------------------
+window.saveManualMCPToken = async function() {
+  const token = document.getElementById('mcp-manual-token-input')?.value?.trim();
+  if (!token) { alert('Please paste a valid access token.'); return; }
+  try {
+    const res = await fetch('/api/admin/ubersuggest/token', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ token })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      document.getElementById('mcp-manual-token-input').value = '';
+      alert('Ubersuggest token saved! Bot will now enrich scans with live SEO data.');
+      fetchBotStatus();
+    } else {
+      alert(data.error || 'Failed to save token.');
+    }
+  } catch (err) { console.error(err); }
+};
+
+// -----------------------------------------------
+// SERVER RESTART
+// -----------------------------------------------
+window.restartServer = async function() {
+  if (!confirm('Restart the server? It will be back online in ~5 seconds. This activates any changed worker count settings.')) return;
+  try {
+    const res = await fetch('/api/admin/restart', { method: 'POST', headers: getHeaders() });
+    const data = await res.json();
+    if (res.ok) {
+      alert('Server is restarting... The page will reload in 6 seconds.');
+      setTimeout(() => window.location.reload(), 6000);
+    } else {
+      alert(data.error || 'Failed to restart.');
+    }
+  } catch (err) {
+    // Connection reset is expected when server restarts
+    alert('Server is restarting... Reloading in 6 seconds.');
+    setTimeout(() => window.location.reload(), 6000);
+  }
+};
+
+// -----------------------------------------------
+// USER ACCOUNT MANAGEMENT
+// -----------------------------------------------
+window.changePassword = async function() {
+  const currentPw = document.getElementById('acct-current-pw')?.value;
+  const newPw     = document.getElementById('acct-new-pw')?.value;
+  if (!currentPw || !newPw) { alert('Please fill in both password fields.'); return; }
+  if (newPw.length < 6) { alert('New password must be at least 6 characters.'); return; }
+  try {
+    const res = await fetch('/api/user/change-password', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ current_password: currentPw, new_password: newPw })
+    });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      document.getElementById('acct-current-pw').value = '';
+      document.getElementById('acct-new-pw').value = '';
+      alert('Password updated successfully!');
+    } else {
+      alert(data.error || 'Failed to update password.');
+    }
+  } catch (err) { console.error(err); }
+};
+
+window.deleteMyAccount = async function() {
+  if (!confirm('Are you absolutely sure? This will permanently delete your account AND all your personal backlink data. There is no undo.')) return;
+  if (!confirm('Last chance — delete my account permanently?')) return;
+  try {
+    const res = await fetch('/api/user/delete-account', { method: 'POST', headers: getHeaders() });
+    const data = await res.json();
+    if (res.ok && data.ok) {
+      alert('Your account has been deleted. Goodbye!');
+      logout();
+    } else {
+      alert(data.error || 'Failed to delete account.');
+    }
+  } catch (err) { console.error(err); }
+};
