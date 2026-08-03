@@ -401,7 +401,19 @@ function resetNicheActive() {
 }
 
 // ── Backlinks Fetch & Render ──────────────────────────────────
-async function fetchBacklinks() {
+async function fetchBacklinks(page = 1) {
+  currentPage = page || 1;
+  const tbody = document.getElementById('vault-table-body');
+  if (tbody) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="10" style="text-align:center; padding:40px; color:var(--text-muted);">
+          <div style="display:flex; align-items:center; justify-content:center; gap:10px;">
+            <span style="font-size:18px;">⏳</span> Loading domains...
+          </div>
+        </td>
+      </tr>`;
+  }
   try {
     const params = new URLSearchParams({
       search: searchQuery,
@@ -409,17 +421,71 @@ async function fetchBacklinks() {
       status: filterStatus,
       rel:    filterRel,
       acq:    filterAcq,
-      limit:  100,
-      offset: 0
+      page:   currentPage,
+      limit:  pageLimit
     });
-    const res   = await fetch(`/api/backlinks?${params}`, { headers: getHeaders() });
-    const links = await res.json();
-    renderVaultTable(Array.isArray(links) ? links : []);
+    if (showMineOnly) params.append('mine', '1');
+
+    const res  = await fetch(`/api/backlinks?${params}`, { headers: getHeaders() });
+    const data = await res.json();
+
+    let items = [];
+    if (data && Array.isArray(data.items)) {
+      items = data.items;
+      totalBacklinksCount = data.total || 0;
+      totalPages = data.total_pages || 1;
+    } else if (Array.isArray(data)) {
+      items = data;
+      totalBacklinksCount = data.length;
+      totalPages = 1;
+    }
+
+    renderVaultTable(items);
+    updatePaginationControls();
   } catch (err) {
     console.error('fetchBacklinks error:', err);
     renderVaultTable([]);
   }
 }
+
+function updatePaginationControls() {
+  const infoText = document.getElementById('pagination-info-text');
+  const pageText = document.getElementById('page-current-text');
+  const prevBtn = document.getElementById('page-prev-btn');
+  const nextBtn = document.getElementById('page-next-btn');
+  const firstBtn = document.getElementById('page-first-btn');
+  const lastBtn = document.getElementById('page-last-btn');
+
+  const start = totalBacklinksCount > 0 ? (currentPage - 1) * pageLimit + 1 : 0;
+  const end = Math.min(currentPage * pageLimit, totalBacklinksCount);
+
+  if (infoText) infoText.innerText = `Showing ${start.toLocaleString()}–${end.toLocaleString()} of ${totalBacklinksCount.toLocaleString()} domains`;
+  if (pageText) pageText.innerText = `Page ${currentPage.toLocaleString()} of ${totalPages.toLocaleString()}`;
+
+  if (prevBtn) prevBtn.disabled = currentPage <= 1;
+  if (firstBtn) firstBtn.disabled = currentPage <= 1;
+  if (nextBtn) nextBtn.disabled = currentPage >= totalPages;
+  if (lastBtn) lastBtn.disabled = currentPage >= totalPages;
+}
+
+window.goToVaultPage = function(page) {
+  if (page === -1) page = totalPages;
+  if (page < 1 || page > totalPages) return;
+  fetchBacklinks(page);
+};
+
+window.prevVaultPage = function() {
+  if (currentPage > 1) fetchBacklinks(currentPage - 1);
+};
+
+window.nextVaultPage = function() {
+  if (currentPage < totalPages) fetchBacklinks(currentPage + 1);
+};
+
+window.changePageLimit = function(limit) {
+  pageLimit = parseInt(limit, 10) || 50;
+  fetchBacklinks(1);
+};
 
 function renderVaultTable(links) {
   const tbody = document.getElementById('vault-table-body');
