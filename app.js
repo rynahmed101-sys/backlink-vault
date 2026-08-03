@@ -270,7 +270,13 @@ function updateUserUI(user) {
     if (guestCtaBanner) guestCtaBanner.style.display = 'none';
 
     if (user.role === 'admin') {
-      adminElements.forEach(el => el.style.display = 'flex');
+      adminElements.forEach(el => {
+        if (el.tagName === 'TH' || el.tagName === 'TD') {
+          el.style.display = 'table-cell';
+        } else {
+          el.style.display = 'flex';
+        }
+      });
       fetchAdminApprovals();
       fetchBotStatus();
     } else {
@@ -435,8 +441,12 @@ function renderVaultTable(links) {
 
     const canDelete = currentUser && (currentUser.role === 'admin' || currentUser.id === item.user_id);
 
+    const isAdmin = currentUser && currentUser.role === 'admin';
+    const isChecked = selectedVaultIds.has(item.id);
+
     const tr = document.createElement('tr');
     tr.innerHTML = `
+      ${isAdmin ? `<td style="text-align:center;"><input type="checkbox" class="vault-checkbox" value="${item.id}" ${isChecked ? 'checked' : ''} onchange="updateVaultSelection()"></td>` : ''}
       <td>
         <div style="display:flex; flex-direction:column; gap:2px;">
           <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener"
@@ -1304,3 +1314,89 @@ document.getElementById('user-search-input')?.addEventListener('input', function
   );
   renderUsersTable(filtered);
 });
+
+// -----------------------------------------------
+// BATCH BOT RE-SCAN FOR ADMIN
+// -----------------------------------------------
+let selectedVaultIds = new Set();
+
+function updateVaultSelection() {
+  const checkboxes = document.querySelectorAll('.vault-checkbox');
+  selectedVaultIds.clear();
+  checkboxes.forEach(cb => {
+    if (cb.checked) {
+      selectedVaultIds.add(parseInt(cb.value, 10));
+    }
+  });
+
+  const count = selectedVaultIds.size;
+  const countBadge = document.getElementById('selected-count-badge');
+  const btnCount = document.getElementById('rescan-selected-btn-count');
+  const batchBar = document.getElementById('admin-batch-bar');
+
+  if (countBadge) countBadge.innerText = `${count} Selected`;
+  if (btnCount) btnCount.innerText = count;
+
+  // Sync master checkbox
+  const master = document.getElementById('select-all-vault-checkbox');
+  if (master && checkboxes.length > 0) {
+    master.checked = count === checkboxes.length;
+  }
+}
+
+window.toggleSelectAllVault = function(master) {
+  const checkboxes = document.querySelectorAll('.vault-checkbox');
+  checkboxes.forEach(cb => { cb.checked = master.checked; });
+  updateVaultSelection();
+};
+
+window.rescanSelectedDomains = async function() {
+  if (selectedVaultIds.size === 0) {
+    alert('Please select at least one domain to re-scan.');
+    return;
+  }
+  const ids = Array.from(selectedVaultIds);
+  if (!confirm(`Re-scan ${ids.length} selected domain(s) with the bot worker?`)) return;
+
+  try {
+    const res = await fetch('/api/admin/backlinks/rescan', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ ids })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert(data.message || 'Domains queued for Bot re-scan!');
+      selectedVaultIds.clear();
+      fetchBacklinks();
+      fetchBotStatus();
+    } else {
+      alert(data.error || 'Failed to queue domains for re-scan');
+    }
+  } catch (err) {
+    console.error('rescanSelectedDomains error:', err);
+  }
+};
+
+window.rescanAllDomains = async function() {
+  if (!confirm('Re-scan ALL domains in the Vault with the Bot Worker? This will place all domains in the inspection queue.')) return;
+
+  try {
+    const res = await fetch('/api/admin/backlinks/rescan', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ rescan_all: true })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      alert(data.message || 'ALL domains queued for Bot re-scan!');
+      selectedVaultIds.clear();
+      fetchBacklinks();
+      fetchBotStatus();
+    } else {
+      alert(data.error || 'Failed to queue all domains for re-scan');
+    }
+  } catch (err) {
+    console.error('rescanAllDomains error:', err);
+  }
+};

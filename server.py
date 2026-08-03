@@ -1421,8 +1421,31 @@ class RequestHandler(BaseHTTPRequestHandler):
                 conn.commit()
                 conn.close()
 
+            elif path == "/api/admin/backlinks/rescan":
+                if not current_user or current_user['role'] != 'admin':
+                    self._set_headers(403)
+                    self.wfile.write(json.dumps({"error": "Admin access required"}).encode('utf-8'))
+                    conn.close()
+                    return
+
+                ids = data.get("ids", [])
+                rescan_all = data.get("rescan_all", False)
+
+                if rescan_all:
+                    cursor.execute("UPDATE backlinks SET status = 'Re-scan' WHERE status != 'Pending Approval'")
+                    updated_count = cursor.rowcount
+                elif ids:
+                    placeholders = ','.join(['?'] * len(ids))
+                    cursor.execute(f"UPDATE backlinks SET status = 'Re-scan' WHERE id IN ({placeholders})", ids)
+                    updated_count = cursor.rowcount
+                else:
+                    updated_count = 0
+
+                conn.commit()
+                conn.close()
+
                 self._set_headers(200)
-                self.wfile.write(json.dumps({"success": True, "message": "Link rejected"}).encode('utf-8'))
+                self.wfile.write(json.dumps({"success": True, "count": updated_count, "message": f"{updated_count} domains queued for Bot re-scan!"}).encode('utf-8'))
                 return
 
             elif path == "/api/bot/settings":

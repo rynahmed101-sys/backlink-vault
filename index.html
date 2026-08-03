@@ -339,12 +339,29 @@
             </div>
           </div>
 
+          <!-- Admin Batch Action Bar (Shown when admin selects domains) -->
+          <div id="admin-batch-bar" class="admin-only" style="display: none; background: rgba(34, 211, 238, 0.05); border: 1px solid var(--border-bright); border-radius: var(--radius-md); padding: 12px 18px; margin-bottom: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600;">
+              <span>🤖 Bot Batch Actions:</span>
+              <span id="selected-count-badge" class="badge" style="background: var(--accent-cyan-glow); color: var(--accent-cyan); border: 1px solid var(--border-bright);">0 Selected</span>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+              <button class="btn btn-primary" onclick="rescanSelectedDomains()" style="font-size: 12px; padding: 6px 14px;">
+                🤖 Re-scan Selected (<span id="rescan-selected-btn-count">0</span>)
+              </button>
+              <button class="btn btn-secondary" onclick="rescanAllDomains()" style="font-size: 12px; padding: 6px 14px; border-color: var(--accent-cyan); color: var(--accent-cyan);">
+                ⚡ Re-scan ALL Vault Domains
+              </button>
+            </div>
+          </div>
+
           <!-- Vault Table -->
           <div class="table-card">
             <table class="vault-table">
               <thead>
                 <tr>
-                  <th>Target Webpage & Title</th>
+                  <th class="admin-only" style="display: none; width: 40px; text-align: center;"><input type="checkbox" id="select-all-vault-checkbox" onclick="toggleSelectAllVault(this)"></th>
+                  <th>Target Webpage &amp; Title</th>
                   <th>Submitted By</th>
                   <th>Niche</th>
                   <th>Acquisition Type</th>
