@@ -76,6 +76,15 @@ function showLanding() {
   document.getElementById('main-app').style.display    = 'none';
   loadHeroStats();
   initLandingButtons();
+  if (currentUser) {
+    document.querySelectorAll('.auth-required').forEach(el => el.style.display = 'flex');
+    document.querySelectorAll('.guest-only').forEach(el => el.style.display = 'none');
+  }
+}
+
+function switchToVaultTab() {
+  const vaultNav = document.querySelector('.nav-item[data-tab="vault"]');
+  if (vaultNav) vaultNav.click();
 }
 
 function showApp() {
@@ -98,18 +107,20 @@ function initApp() {
   fetchStats();
 
   // Polling
-  setInterval(() => {
-    if (currentUser && currentUser.role === 'admin') {
-      fetchBotStatus();
-      fetchAdminApprovals();
-    }
-    if (currentTab === 'vault') {
-      fetchBacklinks();
-      fetchStats();
-    } else if (currentTab === 'personal' && currentUser) {
-      fetchPersonalBacklinks();
-    }
-  }, 4000);
+  if (!window._botPollInterval) {
+    window._botPollInterval = setInterval(() => {
+      if (currentUser && currentUser.role === 'admin') {
+        fetchBotStatus();
+        fetchAdminApprovals();
+      }
+      if (currentTab === 'vault') {
+        fetchBacklinks();
+        fetchStats();
+      } else if (currentTab === 'personal' && currentUser) {
+        fetchPersonalBacklinks();
+      }
+    }, 4000);
+  }
 }
 
 // ── Landing Page ──────────────────────────────────────────────
@@ -121,6 +132,18 @@ async function loadHeroStats() {
     el('hero-stat-total',  (data.total  || 0).toLocaleString());
     el('hero-stat-active', (data.active || 0).toLocaleString());
     el('hero-stat-da',     data.avg_da  || 0);
+  } catch (e) { /* non-fatal */ }
+
+  // Load custom CMS Homepage Hero content if configured
+  try {
+    const cmsRes = await fetch('/api/cms/pages/homepage-hero');
+    if (cmsRes.ok) {
+      const cmsPage = await cmsRes.json();
+      if (cmsPage && cmsPage.content_html) {
+        const heroTitle = document.querySelector('.hero-title');
+        if (heroTitle) heroTitle.innerHTML = cmsPage.content_html;
+      }
+    }
   } catch (e) { /* non-fatal */ }
 }
 

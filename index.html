@@ -20,8 +20,9 @@
         <div class="brand-title">Backlink Vault</div>
       </div>
       <div style="display: flex; gap: 12px; align-items: center;">
-        <button class="btn btn-secondary" id="landing-login-btn">Log In</button>
-        <button class="btn btn-primary" id="landing-signup-btn">Sign Up Free</button>
+        <button class="btn btn-secondary guest-only" id="landing-login-btn">Log In</button>
+        <button class="btn btn-primary guest-only" id="landing-signup-btn">Sign Up Free</button>
+        <button class="btn btn-primary auth-required" onclick="showApp()" style="display: none;">← Return to Vault / Admin Dashboard</button>
       </div>
     </nav>
 

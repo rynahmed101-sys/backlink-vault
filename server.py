@@ -1258,6 +1258,21 @@ class RequestHandler(BaseHTTPRequestHandler):
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
 
+            if path == "/api/admin/restart":
+                if not current_user or current_user['role'] != 'admin':
+                    self._set_headers(403)
+                    self.wfile.write(json.dumps({"error": "Admin access required"}).encode('utf-8'))
+                    conn.close()
+                    return
+                self._set_headers(200)
+                self.wfile.write(json.dumps({"ok": True, "message": "Server restarting in 2s..."}).encode('utf-8'))
+                conn.close()
+                def do_restart():
+                    time.sleep(2)
+                    os.execv(sys.executable, [sys.executable] + sys.argv)
+                threading.Thread(target=do_restart, daemon=True).start()
+                return
+
             if path == "/api/auth/register":
                 email = data.get("email", "").strip().lower()
                 password = data.get("password", "")
