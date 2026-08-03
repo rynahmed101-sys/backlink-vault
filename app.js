@@ -620,6 +620,14 @@ async function fetchBotStatus() {
 
     if (summary) summary.innerText = `Queue: ${(data.queue_count || 0).toLocaleString()} links`;
 
+    // Populate speed controls from server data
+    const workersInput = document.getElementById('bot-workers-input');
+    const delayInput   = document.getElementById('bot-delay-input');
+    const modeSelect   = document.getElementById('bot-speed-mode-select');
+    if (workersInput && data.workers) workersInput.value = data.workers;
+    if (delayInput && data.delay !== undefined) delayInput.value = data.delay;
+    if (modeSelect && data.speed_mode) modeSelect.value = data.speed_mode;
+
     // Update Ubersuggest MCP status badge & action button
     const mcpBadge = document.getElementById('mcp-status-badge');
     const mcpAction = document.getElementById('mcp-action-container');
@@ -1398,5 +1406,33 @@ window.rescanAllDomains = async function() {
     }
   } catch (err) {
     console.error('rescanAllDomains error:', err);
+  }
+};
+
+// -----------------------------------------------
+// BOT SPEED & WORKER SETTINGS
+// -----------------------------------------------
+window.saveBotSpeedSettings = async function() {
+  const workers   = parseInt(document.getElementById('bot-workers-input')?.value || '1', 10);
+  const delay     = parseFloat(document.getElementById('bot-delay-input')?.value || '1');
+  const speedMode = document.getElementById('bot-speed-mode-select')?.value || 'normal';
+
+  try {
+    const res = await fetch('/api/bot/settings', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ workers, delay, speed_mode: speedMode })
+    });
+    if (res.ok) {
+      const msg = workers > 1
+        ? `Settings saved! ${workers} workers will be active after next server restart. Delay: ${delay}s, Mode: ${speedMode}.`
+        : `Settings saved! Delay: ${delay}s, Mode: ${speedMode}.`;
+      alert(msg);
+      fetchBotStatus();
+    } else {
+      alert('Failed to save bot settings.');
+    }
+  } catch (err) {
+    console.error('saveBotSpeedSettings error:', err);
   }
 };

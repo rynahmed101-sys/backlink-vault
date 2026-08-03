@@ -411,10 +411,11 @@ def determine_acquisition_type(title, description, url, html_content=''):
 
 # Bot Inspector Worker Thread
 class BotWorker(threading.Thread):
-    def __init__(self):
+    def __init__(self, worker_id=0):
         super().__init__()
         self.daemon = True
-        self.name = "BotWorker"
+        self.worker_id = worker_id
+        self.name = f"BotWorker-{worker_id}"
 
     def log(self, link_id, message, level="info"):
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -532,7 +533,12 @@ class BotWorker(threading.Thread):
 
             cursor.execute("SELECT value FROM bot_settings WHERE key = 'delay'")
             delay_row = cursor.fetchone()
-            delay = max(2.0, float(delay_row[0]) if delay_row else 2.0)  # Minimum 2s delay
+            cursor.execute("SELECT value FROM bot_settings WHERE key = 'speed_mode'")
+            speed_row = cursor.fetchone()
+            turbo = speed_row and speed_row[0] == 'turbo'
+            raw_delay = float(delay_row[0]) if delay_row else 2.0
+            # Turbo mode: no floor. Normal: minimum 0.5s to be polite
+            delay = max(0.0, raw_delay) if turbo else max(0.5, raw_delay)
 
             if bot_status != "running":
                 conn.close()
@@ -656,7 +662,7 @@ class BotWorker(threading.Thread):
             ''', (niche, da, val_score, final_status, http_code, rel_type, site_title or url, site_desc, elapsed_ms, risk_score, now_str, acq_type, link_id))
             conn.commit()
             conn.close()
-            print(f"[BOT] {url[:60]} → {final_status} | DA:{da} Score:{val_score}{mcp_log}", flush=True)
+            print(f"[BOT-W{self.worker_id}] {url[:60]} → {final_status} | DA:{da} Score:{val_score}{mcp_log}", flush=True)
         except Exception as write_err:
             print(f"[BOT-WRITE-ERR] {write_err}", flush=True)
 
@@ -1005,6 +1011,8 @@ class RequestHandler(BaseHTTPRequestHandler):
                 res = {
                     "status": settings.get("status", "running"),
                     "delay": float(settings.get("delay", str(DEFAULT_BOT_DELAY))),
+                    "workers": int(settings.get("workers", "1")),
+                    "speed_mode": settings.get("speed_mode", "normal"),
                     "queue_count": queue_count,
                     "ubersuggest_connected": has_ubersuggest,
                     "logs": [dict(r) for r in log_rows]
@@ -1455,13 +1463,20 @@ class RequestHandler(BaseHTTPRequestHandler):
                     conn.close()
                     return
 
-                status = data.get("status")
-                delay = data.get("delay")
+                status     = data.get("status")
+                delay      = data.get("delay")
+                workers    = data.get("workers")
+                speed_mode = data.get("speed_mode")
 
                 if status in ["running", "paused"]:
-                    cursor.execute("UPDATE bot_settings SET value = ? WHERE key = 'status'", (status,))
-                if delay:
-                    cursor.execute("UPDATE bot_settings SET value = ? WHERE key = 'delay'", (str(delay),))
+                    cursor.execute("INSERT OR REPLACE INTO bot_settings (key, value) VALUES ('status', ?)", (status,))
+                if delay is not None:
+                    cursor.execute("INSERT OR REPLACE INTO bot_settings (key, value) VALUES ('delay', ?)", (str(delay),))
+                if workers is not None:
+                    clamped = min(5, max(1, int(workers)))
+                    cursor.execute("INSERT OR REPLACE INTO bot_settings (key, value) VALUES ('workers', ?)", (str(clamped),))
+                if speed_mode in ["normal", "turbo"]:
+                    cursor.execute("INSERT OR REPLACE INTO bot_settings (key, value) VALUES ('speed_mode', ?)", (speed_mode,))
 
                 conn.commit()
                 conn.close()
@@ -1682,13 +1697,24 @@ def run_server(port=None):
     except Exception as e:
         print(f"[WARN] Heartbeat thread failed: {e}", flush=True)
 
-    # --- Start Bot Worker ---
+    # --- Start Bot Workers (multi-worker for parallel scanning) ---
     try:
-        print("[STARTUP] Starting BotWorker thread...", flush=True)
-        worker = BotWorker()
-        worker.daemon = True
-        worker.start()
-        print("[STARTUP] BotWorker started", flush=True)
+        conn_init = sqlite3.connect(DB_PATH, timeout=10)
+        cur_init = conn_init.cursor()
+        cur_init.execute("SELECT value FROM bot_settings WHERE key = 'workers'")
+        w_row = cur_init.fetchone()
+        num_workers = min(5, max(1, int(w_row[0]) if w_row else 1))
+        conn_init.close()
+    except Exception:
+        num_workers = 1
+
+    try:
+        print(f"[STARTUP] Starting {num_workers} BotWorker thread(s)...", flush=True)
+        for wid in range(num_workers):
+            w = BotWorker(worker_id=wid)
+            w.daemon = True
+            w.start()
+        print(f"[STARTUP] {num_workers} BotWorker(s) started", flush=True)
     except Exception as e:
         print(f"[FATAL] BotWorker failed to start: {e}", flush=True)
         traceback.print_exc()

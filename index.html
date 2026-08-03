@@ -631,6 +631,36 @@
               </div>
             </div>
 
+            <!-- Bot Speed Controls (Admin Only) -->
+            <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 20px; display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-wrap: wrap;">
+              <div>
+                <div style="font-weight: 700; font-size: 15px; margin-bottom: 4px;">⚡ Scan Speed &amp; Workers</div>
+                <p style="font-size: 12px; color: var(--text-muted); margin: 0;">Parallel workers scan different domains simultaneously. Turbo mode removes rate-limit delays.</p>
+                <p style="font-size: 11px; color: var(--accent-rose); margin: 4px 0 0;"><strong>Note:</strong> Requires server restart to change worker count.</p>
+              </div>
+              <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <label style="font-size: 12px; color: var(--text-muted); white-space: nowrap;">Workers (1–5):</label>
+                  <input type="number" id="bot-workers-input" min="1" max="5" value="1"
+                    style="width: 56px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-main); padding: 5px 8px; font-size: 13px;">
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <label style="font-size: 12px; color: var(--text-muted);">Delay (s):</label>
+                  <input type="number" id="bot-delay-input" min="0" max="10" step="0.5" value="1"
+                    style="width: 64px; background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-main); padding: 5px 8px; font-size: 13px;">
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <label style="font-size: 12px; color: var(--text-muted);">Mode:</label>
+                  <select id="bot-speed-mode-select"
+                    style="background: var(--bg-input); border: 1px solid var(--border-color); border-radius: var(--radius-sm); color: var(--text-main); padding: 5px 8px; font-size: 13px;">
+                    <option value="normal">Normal (polite)</option>
+                    <option value="turbo">⚡ Turbo (max speed)</option>
+                  </select>
+                </div>
+                <button class="btn btn-primary" onclick="saveBotSpeedSettings()" style="font-size: 12px; padding: 7px 16px;">Save Settings</button>
+              </div>
+            </div>
+
             <div class="terminal-window" id="bot-terminal"></div>
           </div>
         </section>
