@@ -1,3 +1,4 @@
+let showMineOnly = false;
 let currentPage = 1;
 let pageLimit = 50;
 let totalPages = 1;
@@ -424,7 +425,7 @@ async function fetchBacklinks(page = 1) {
       page:   currentPage,
       limit:  pageLimit
     });
-    if (showMineOnly) params.append('mine', '1');
+    if (typeof showMineOnly !== 'undefined' && showMineOnly) params.append('mine', '1');
 
     const res  = await fetch(`/api/backlinks?${params}`, { headers: getHeaders() });
     const data = await res.json();
