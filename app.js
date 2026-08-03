@@ -360,7 +360,7 @@ function initSearchAndFilters() {
     searchQuery = e.target.value;
     if (searchDebounceTimeout) clearTimeout(searchDebounceTimeout);
     searchDebounceTimeout = setTimeout(() => {
-      fetchBacklinks(1);
+      fetchBacklinks(1, true);
     }, 300);
   });
 
@@ -402,10 +402,10 @@ function resetNicheActive() {
 }
 
 // ── Backlinks Fetch & Render ──────────────────────────────────
-async function fetchBacklinks(page = 1) {
+async function fetchBacklinks(page = 1, showLoading = false) {
   currentPage = page || 1;
   const tbody = document.getElementById('vault-table-body');
-  if (tbody) {
+  if (tbody && showLoading && (!tbody.children.length || tbody.innerHTML.includes('No backlinks match'))) {
     tbody.innerHTML = `
       <tr>
         <td colspan="10" style="text-align:center; padding:40px; color:var(--text-muted);">
@@ -472,20 +472,20 @@ function updatePaginationControls() {
 window.goToVaultPage = function(page) {
   if (page === -1) page = totalPages;
   if (page < 1 || page > totalPages) return;
-  fetchBacklinks(page);
+  fetchBacklinks(page, true);
 };
 
 window.prevVaultPage = function() {
-  if (currentPage > 1) fetchBacklinks(currentPage - 1);
+  if (currentPage > 1) fetchBacklinks(currentPage - 1, true);
 };
 
 window.nextVaultPage = function() {
-  if (currentPage < totalPages) fetchBacklinks(currentPage + 1);
+  if (currentPage < totalPages) fetchBacklinks(currentPage + 1, true);
 };
 
 window.changePageLimit = function(limit) {
   pageLimit = parseInt(limit, 10) || 50;
-  fetchBacklinks(1);
+  fetchBacklinks(1, true);
 };
 
 function renderVaultTable(links) {
