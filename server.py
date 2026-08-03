@@ -162,9 +162,7 @@ def init_db():
     try: cursor.execute("ALTER TABLE backlinks ADD COLUMN ubersuggest_enriched INTEGER DEFAULT 0")
     except sqlite3.OperationalError: pass
 
-    # Put all active/broken/approved backlinks in queue for a full fresh scan
-    try: cursor.execute("UPDATE backlinks SET status = 'Re-scan' WHERE status IN ('Active', 'Approved', 'Broken', 'Auditing', 'Queued')")
-    except Exception as eq: pass
+    # (Re-scan on startup removed — use /api/admin/backlinks/rescan endpoint instead)
 
 
     cursor.execute('''
@@ -439,7 +437,7 @@ class BotWorker(threading.Thread):
             cursor = conn.cursor()
             cursor.execute("INSERT INTO bot_logs (link_id, timestamp, message, level) VALUES (?, ?, ?, ?)",
                            (link_id, timestamp, message, level))
-            cursor.execute("DELETE FROM bot_logs WHERE id NOT IN (SELECT id FROM bot_logs ORDER BY id DESC LIMIT 100)")
+            cursor.execute("DELETE FROM bot_logs WHERE id NOT IN (SELECT id FROM bot_logs ORDER BY id DESC LIMIT 500)")
             conn.commit()
             conn.close()
         except Exception as log_err:
@@ -1020,7 +1018,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 cursor.execute("SELECT COUNT(*) FROM backlinks WHERE status = 'Pending Approval'")
                 pending_approval = cursor.fetchone()[0]
 
-                cursor.execute("SELECT COUNT(*) FROM backlinks WHERE status IN ('Approved', 'Queued', 'Auditing')")
+                cursor.execute("SELECT COUNT(*) FROM backlinks WHERE status IN ('Approved', 'Re-scan', 'Queued', 'Auditing')")
                 bot_queue = cursor.fetchone()[0]
 
                 cursor.execute("SELECT COUNT(*) FROM backlinks WHERE status = 'Broken'")
@@ -1057,10 +1055,10 @@ class RequestHandler(BaseHTTPRequestHandler):
                 settings_rows = cursor.fetchall()
                 settings = {r['key']: r['value'] for r in settings_rows}
 
-                cursor.execute("SELECT COUNT(*) FROM backlinks WHERE status IN ('Approved', 'Queued', 'Auditing')")
+                cursor.execute("SELECT COUNT(*) FROM backlinks WHERE status IN ('Approved', 'Re-scan', 'Queued', 'Auditing')")
                 queue_count = cursor.fetchone()[0]
 
-                cursor.execute("SELECT * FROM bot_logs ORDER BY id DESC LIMIT 50")
+                cursor.execute("SELECT * FROM bot_logs ORDER BY id DESC LIMIT 200")
                 log_rows = cursor.fetchall()
 
                 has_ubersuggest = bool(settings.get("ubersuggest_access_token"))

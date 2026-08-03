@@ -761,13 +761,50 @@ async function fetchBotStatus() {
     if (currentTab === 'bot') {
       const terminal = document.getElementById('bot-terminal');
       if (terminal && Array.isArray(data.logs)) {
-        terminal.innerHTML = '';
-        [...data.logs].reverse().forEach(l => {
+        // Smart diff: only append NEW log lines we haven't seen yet
+        const existingIds = new Set(
+          [...terminal.querySelectorAll('.log-line[data-log-id]')]
+            .map(el => el.getAttribute('data-log-id'))
+        );
+
+        // Logs come newest-first from server; reverse to get oldest-first
+        const logsOldestFirst = [...data.logs].reverse();
+
+        let addedCount = 0;
+        logsOldestFirst.forEach(l => {
+          const logId = String(l.id || l.timestamp + l.message?.slice(0, 20));
+          if (existingIds.has(logId)) return; // already rendered
+
           const div = document.createElement('div');
           div.className = 'log-line';
-          div.innerHTML = `<span class="log-time">[${escapeHtml(l.timestamp)}]</span> <span class="log-${l.level}">${escapeHtml(l.message)}</span>`;
+          div.setAttribute('data-log-id', logId);
+
+          let lineClass = 'log-info';
+          const msg = (l.message || '').toLowerCase();
+          if (l.level === 'error' || msg.includes('error') || msg.includes('fail') || msg.includes('broken')) lineClass = 'log-error';
+          else if (l.level === 'success' || msg.includes('verified') || msg.includes('active') || msg.includes('domain indexed')) lineClass = 'log-success';
+          else if (msg.includes('auditing') || msg.includes('ubersuggest') || msg.includes('mcp')) lineClass = 'log-warn';
+
+          div.innerHTML = `<span class="log-time">[${escapeHtml(l.timestamp || '')}]</span> <span class="${lineClass}">${escapeHtml(l.message || '')}</span>`;
           terminal.appendChild(div);
+          addedCount++;
         });
+
+        // Cap terminal at 200 lines max to prevent memory bloat
+        const allLines = terminal.querySelectorAll('.log-line');
+        if (allLines.length > 200) {
+          for (let i = 0; i < allLines.length - 200; i++) {
+            allLines[i].remove();
+          }
+        }
+
+        // Auto-scroll to bottom only if user is near the bottom already
+        if (addedCount > 0) {
+          const distFromBottom = terminal.scrollHeight - terminal.scrollTop - terminal.clientHeight;
+          if (distFromBottom < 80) {
+            terminal.scrollTop = terminal.scrollHeight;
+          }
+        }
       }
     }
   } catch (err) {
